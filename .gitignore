@@ -1,0 +1,59 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Django static and media files
+/staticfiles/  # Folder for collected static files
+/media/        # Media files uploaded by users
+
+# Logs
+*.log
+
+# Secrets
+.env
+
+# Celery beat schedule database
+celerybeat-schedule
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# System-specific files
+*.DS_Store
+Thumbs.db
+
+# Compiled files
+*.so
+
+# Docker
+*.pid
+*.swp
+.dockerignore
+
+# Node/npm related (if used anywhere for static assets)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Testing
+.coverage
+*.coverage
+
+# Other custom or temporary files
+*.tmp
+*.bak
+*.swp
+*.old
+*.orig
+*.save
+
+# PyCharm specific files
+*.iml
+.idea/
