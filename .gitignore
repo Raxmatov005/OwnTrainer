@@ -8,7 +8,7 @@ venv/
 env/
 ENV/
 
-# Django static and media files
+# Django staticfiles and media files
 /staticfiles/  # Folder for collected static files
 /media/        # Media files uploaded by users
 
@@ -37,7 +37,7 @@ Thumbs.db
 *.swp
 .dockerignore
 
-# Node/npm related (if used anywhere for static assets)
+# Node/npm related (if used anywhere for staticfiles assets)
 node_modules/
 package-lock.json
 yarn.lock
