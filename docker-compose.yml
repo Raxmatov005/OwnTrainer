@@ -10,6 +10,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - owntrainer_network
+    restart: always
 
   redis:
     image: redis:7-alpine
@@ -18,6 +19,7 @@ services:
       - "6379:6379"
     networks:
       - owntrainer_network
+    restart: always
 
   web:
     build:
@@ -33,6 +35,7 @@ services:
       - redis
     networks:
       - owntrainer_network
+    restart: always
 
   worker:
     build:
@@ -48,6 +51,7 @@ services:
       - web
     networks:
       - owntrainer_network
+    restart: always
 
   beat:
     build:
@@ -63,6 +67,7 @@ services:
       - worker
     networks:
       - owntrainer_network
+    restart: always
 
 volumes:
   postgres_data:
