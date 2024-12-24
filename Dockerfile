@@ -14,4 +14,5 @@ COPY .env .env
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--workers", "2", "--bind", "0.0.0.0:8000", "register.wsgi:application"]
+CMD ["sh", "-c", "python manage.py makemigrations && python manage.py migrate && gunicorn --workers 2 --bind 0.0.0.0:8000 register.wsgi:application"]
+
