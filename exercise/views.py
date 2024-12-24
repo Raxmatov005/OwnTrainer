@@ -164,11 +164,7 @@ class SessionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # Fetch completed sessions
-            completed_sessions_ids = SessionCompletion.objects.filter(
-                user=request.user,
-                is_completed=True
-            ).values_list('session_id', flat=True)
+
 
             # Fetch the next upcoming session
             next_upcoming_session = SessionCompletion.objects.filter(
@@ -178,9 +174,9 @@ class SessionViewSet(viewsets.ModelViewSet):
             ).order_by('session_date').first()
 
             # Collect session IDs to display
-            session_ids = list(completed_sessions_ids)
-            if next_upcoming_session:
-                session_ids.append(next_upcoming_session.session_id)
+            session_ids = []
+            # if next_upcoming_session:
+            session_ids.append(next_upcoming_session.session_id)
 
             # Filter sessions based on the collected session IDs
             sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')

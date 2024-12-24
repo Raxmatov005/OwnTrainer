@@ -102,13 +102,34 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'goal',
             'level',
             'photo',
-            'language'
+            'language',
+            'phone_or_email_optional',  # Allow updating the optional field
         ]
         extra_kwargs = {
-
+            'first_name': {'required': False},  # Make it optional
+            'last_name': {'required': False},  # Make it optional
         }
 
     def validate(self, attrs):
+        user = self.instance  # Get the current user instance
+
+        # Check if the user registered with email or phone
+        registered_with_email = '@' in user.email_or_phone
+        registered_with_phone = not registered_with_email
+
+        # Check if the user is adding the missing field
+        optional_field = attrs.get('phone_or_email_optional')
+
+        if registered_with_email:
+            if not optional_field or optional_field.isdigit() == False:
+                raise serializers.ValidationError(
+                    {"phone_or_email_optional": "You must add a valid phone number."}
+                )
+        elif registered_with_phone:
+            if not optional_field or '@' not in optional_field:
+                raise serializers.ValidationError(
+                    {"phone_or_email_optional": "You must add a valid email address."}
+                )
 
         return attrs
 
@@ -234,10 +255,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'first_name', 'last_name', 'email_or_phone', 'gender',
+            'id', 'first_name', 'last_name', 'email_or_phone', 'phone_or_email_optional', 'gender',
             'country', 'age', 'height', 'weight', 'goal', 'level',
             'is_premium', 'photo', 'language', 'date_joined', 'is_active'
         ]
+
 
 
 class ReminderTimeSerializer(serializers.Serializer):

@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:15
+    container_name: owntrainer_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - owntrainer_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: owntrainer_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - owntrainer_network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owntrainer_web
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - owntrainer_network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owntrainer_worker
+    command: celery -A register worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+      - web
+    networks:
+      - owntrainer_network
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: owntrainer_beat
+    command: celery -A register beat --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+      - worker
+    networks:
+      - owntrainer_network
+
+volumes:
+  postgres_data:
+
+networks:
+  owntrainer_network:
+    driver: bridge

@@ -18,13 +18,9 @@ def translate_text(text, target_language):
         return text
 
 
+
 def default_notification_preferences():
-    return {
-        "email": True,
-        "sms": False,
-        "in_app": True,
-        "reminder_enabled": True
-    }
+    return {"email": False, "push_notification": True, "reminder_enabled": True}
 
 
 class CustomUserManager(BaseUserManager):
@@ -60,6 +56,7 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email_or_phone, password, **extra_fields)
 
 
+
 class User(AbstractBaseUser, PermissionsMixin):
     LANGUAGE_CHOICES = [
         ('en', 'English'),
@@ -77,6 +74,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     gender = models.CharField(max_length=10, choices=[('Male', 'Male'), ('Female', 'Female')], blank=True, null=True)
     country = models.CharField(max_length=50, blank=True, null=True, choices=[('Uzbekistan', 'Uzbekistan'), ('Russia', 'Russia'), ('Kazakhstan', 'Kazakhstan'), ('Other', 'Other')], default='Other')
     notification_preferences = models.JSONField(default=default_notification_preferences)
+    device_token = models.CharField(max_length=255, blank=True, null=True)
     reminder_time = models.TimeField(blank=True, null=True)
     age = models.PositiveIntegerField(blank=True, null=True, validators=[MinValueValidator(16), MaxValueValidator(50)])
     height = models.PositiveIntegerField(blank=True, null=True,
@@ -169,7 +167,8 @@ class UserProgram(models.Model):
         return (completed_sessions / total_sessions) * 100 if total_sessions > 0 else 0
 
     def __str__(self):
-        return f"{self.user} - {self.program.program_goal}"
+        program_goal = self.program.program_goal if self.program else "No Program"
+        return f"{self.user} - {program_goal}"
 
 
 class WorkoutCategory(models.Model):

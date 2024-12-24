@@ -5,7 +5,6 @@ from users_app.models import (User, Notification, Program, UserProgram, MealComp
                               MealCompletion, SessionCompletion, UserProgram, Session, MealCompletion,
                               SessionCompletion, ExerciseCompletion)
 from django.utils.timezone import now
-from .tasks import schedule_notification
 from .models import Notification
 from django.core.exceptions import ValidationError as DjangoValidationError
 from users_app.serializers import (
@@ -43,6 +42,8 @@ from payme import Payme
 from register import settings
 from drf_yasg.utils import swagger_auto_schema
 from django.conf import settings
+from .tasks import send_scheduled_notification
+
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -465,7 +466,7 @@ class OrderCreate(views.APIView):
         if serializer.data["payment_method"] == "payme":
             payment_link = payme.initializer.generate_pay_link(
                 id=serializer.data["id"],
-                amount=serializer.data["total_amount"],
+                amount=serializer.data["amount"],
                 return_url="https://uzum.uz"
             )
             result["payment_link"] = payment_link
@@ -515,50 +516,60 @@ class UserProfileView(APIView):
         return Response(serializer.data, status=200)
 
 
+
+
+
 class SetReminderTimeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "reminder_time": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Time in 'HH:MM' format",
+                    example="14:30"
+                ),
+            },
+            required=["reminder_time"]
+        )
+    )
     def post(self, request):
         reminder_time = request.data.get("reminder_time")
         if not reminder_time:
-            return Response({"error": _("No time provided.")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "No time provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Vaqt formatini o'zgartirish
-            formatted_time = datetime.strptime(reminder_time, "%H:%M").time()
+            formatted_time = datetime.strptime(reminder_time, "%H:MM").time()
             request.user.reminder_time = formatted_time
             request.user.save()
 
-            # 5 daqiqa oldingi vaqtni hisoblash
             reminder_time_5min_early = datetime.combine(now().date(), formatted_time) - timedelta(minutes=5)
 
-            # Xabar yaratish (tilga mos)
             message = {
                 "uz": "Sizning mashqingizga 5 daqiqa qoldi!",
                 "ru": "До вашей тренировки осталось 5 минут!",
                 "en": "5 minutes left until your workout!"
             }
-            user_language = request.user.language
-            final_message = message.get(user_language, message['en'])
+            final_message = message.get(request.user.language, message["en"])
 
-            # Notification yaratish
             notification = Notification.objects.create(
                 user=request.user,
                 message=final_message,
                 notification_type="reminder",
-                scheduled_time=reminder_time_5min_early.time()
+                scheduled_time=reminder_time_5min_early
             )
 
-            # Celery yordamida xabar yuborishni rejalashtirish
-            schedule_notification.apply_async(
+            send_scheduled_notification.apply_async(
                 (notification.id,), eta=reminder_time_5min_early
             )
 
             return Response({
-                "message": _("Reminder time set successfully."),
+                "message": "Reminder time set successfully.",
                 "reminder_time": str(formatted_time),
                 "notification_scheduled_at": str(reminder_time_5min_early.time())
             }, status=status.HTTP_200_OK)
 
         except ValueError:
-            return Response({"error": _("Invalid time format. Use 'HH:MM' format.")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid time format. Use 'HH:MM' format."}, status=status.HTTP_400_BAD_REQUEST)

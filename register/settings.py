@@ -9,36 +9,39 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
+
 import os
 from pathlib import Path
 from datetime import timedelta
 from django.utils.translation import gettext_lazy as _
 from dotenv import load_dotenv
+
+# ----------------------------------------------------------------------------- #
+# Load .env
+# ----------------------------------------------------------------------------- #
 load_dotenv('.env')
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASS = os.getenv('DB_PASS')
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT')
 
-
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# ----------------------------------------------------------------------------- #
+# Paths
+# ----------------------------------------------------------------------------- #
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# ----------------------------------------------------------------------------- #
+# Security / Environment Settings
+# ----------------------------------------------------------------------------- #
+SECRET_KEY = os.getenv('SECRET_KEY', 'replace-this-with-a-secret-key-if-not-in-env')
+DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-h4_&vjrd6zff@32ux198*9bt9=)t(y^bzf0m#0hw)@nw0*e&*+"
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = ['*']
-
-
-
-# Application definition
-
+# ----------------------------------------------------------------------------- #
+# Installed Applications
+# ----------------------------------------------------------------------------- #
 INSTALLED_APPS = [
-
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -47,6 +50,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     'rest_framework',
     'rest_framework_simplejwt',
+    'fcm_django',
     'drf_yasg',
     'users_app',
     'exercise',
@@ -55,63 +59,26 @@ INSTALLED_APPS = [
     'payment',
     'payme',
     'pyclick',
-    'click_app'
-
+    'click_app',
 ]
 
-
-#
-# #
-PAYME_ID = ""
-# PAYME_KEY = "Sa&qpe#htSbtn6Os6Gb9z@I?%fbucFjs?6dg"
-PAYME_KEY = ""
-PAYME_ACCOUNT_FIELD = "id"
-PAYME_AMOUNT_FIELD = "amount"
-PAYME_ACCOUNT_MODEL = "users_app.models.UserProgram"
-PAYME_ONE_TIME_PAYMENT = True
-
-# settings.py
-
+# ----------------------------------------------------------------------------- #
+# Middleware
+# ----------------------------------------------------------------------------- #
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # Added Whitenoise middleware for static files
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-
 ]
 
-
-CLICK_SETTINGS = {
-    'service_id': "39247",
-    'merchant_id': "31383",
-    'secret_key': "n1vtdieu65XqXM",
-    'merchant_user_id': "48915",
-}
-
-
-
-
-
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    # 'DEFAULT_PERMISSION_CLASSES': (
-    #     'rest_framework.permissions.IsAuthenticated',
-    # ),
-}
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    # Other configurations as needed
-}
-
-
+# ----------------------------------------------------------------------------- #
+# Root Configuration
+# ----------------------------------------------------------------------------- #
 ROOT_URLCONF = "register.urls"
 
 TEMPLATES = [
@@ -132,97 +99,98 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "register.wsgi.application"
 
-
+# ----------------------------------------------------------------------------- #
 # Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
+# ----------------------------------------------------------------------------- #
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASS,
+        'HOST': DB_HOST,
+        'PORT': DB_PORT,
     }
 }
 
-
-
-# Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
+# ----------------------------------------------------------------------------- #
+# Static and Media Files
+# ----------------------------------------------------------------------------- #
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',  # Custom static directory (optional, ensure it exists)
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
-
-
-TIME_ZONE = "UTC"
-
-USE_I18N = True
-
-USE_L10N = True
-
-USE_TZ = True
-
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
-
-STATIC_URL = "static/"
-MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Add Whitenoise settings
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-AUTH_USER_MODEL='users_app.User'
-
-
-from datetime import timedelta
-
+# ----------------------------------------------------------------------------- #
+# Authentication and JWT
+# ----------------------------------------------------------------------------- #
+AUTH_USER_MODEL = 'users_app.User'
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
+AUTHENTICATION_BACKENDS = [
+    'users_app.backends.EmailOrPhoneBackend',  # Custom backend
+    'django.contrib.auth.backends.ModelBackend',  # Default backend
+]
 
+# ----------------------------------------------------------------------------- #
+# PayMe, Eskiz, and Click Settings
+# ----------------------------------------------------------------------------- #
+PAYME_ID = os.getenv('PAYME_ID', '')
+PAYME_KEY = os.getenv('PAYME_KEY', '')
+PAYME_ACCOUNT_FIELD = os.getenv('PAYME_ACCOUNT_FIELD', '')
+PAYME_AMOUNT_FIELD = os.getenv('PAYME_AMOUNT_FIELD', '')
+PAYME_ACCOUNT_MODEL = os.getenv('PAYME_ACCOUNT_MODEL', '')
+PAYME_ONE_TIME_PAYMENT = os.getenv('PAYME_ONE_TIME_PAYMENT', 'True').lower() in ('true', '1', 'yes')
 
+ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
+ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD', '')
+ESKIZ_BASE_URL = os.getenv('ESKIZ_BASE_URL', '')
 
-
-ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL')
-ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD')
-ESKIZ_BASE_URL = os.getenv('ESKIZ_BASE_URL')
-
-
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
-    }
-
-
+CLICK_SETTINGS = {
+    'service_id': os.getenv('CLICK_SERVICE_ID', ''),
+    'merchant_id': os.getenv('CLICK_MERCHANT_ID', ''),
+    'secret_key': os.getenv('CLICK_SECRET_KEY', ''),
+    'merchant_user_id': os.getenv('CLICK_MERCHANT_USER_ID', ''),
 }
 
+# ----------------------------------------------------------------------------- #
+# Celery
+# ----------------------------------------------------------------------------- #
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+
+# ----------------------------------------------------------------------------- #
+# Language and Timezone
+# ----------------------------------------------------------------------------- #
+LANGUAGE_CODE = os.getenv('LANGUAGE_CODE', 'uz')
+LANGUAGES = [
+    ('en', _('English')),
+    ('ru', _('Russian')),
+    ('uz', _('Uzbek')),
+]
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_L10N = True
+USE_TZ = True
+
+# ----------------------------------------------------------------------------- #
+# Swagger
+# ----------------------------------------------------------------------------- #
 SWAGGER_SETTINGS = {
-    'DEFAULT_INFO': 'register.urls.schema_view',  # api_info' ni o'zingizning loyihangizga moslang
-    'USE_SESSION_AUTH': False,  # Basic auth o‘rniga JWT ni ishlatish
+    'DEFAULT_INFO': 'register.urls.schema_view',
+    'USE_SESSION_AUTH': False,
     'SECURITY_DEFINITIONS': {
         'Bearer': {
             'type': 'apiKey',
@@ -231,55 +199,11 @@ SWAGGER_SETTINGS = {
             'description': 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"',
         }
     },
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
 }
 
-
-AUTHENTICATION_BACKENDS = [
-    'users_app.backends.EmailOrPhoneBackend',  # Custom backend
-    'django.contrib.auth.backends.ModelBackend',  # Default backend
-]
-
+# ----------------------------------------------------------------------------- #
+# Default Primary Key Field Type
+# ----------------------------------------------------------------------------- #
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'mirzahidovj@gmail.com'  # Your Gmail address
-EMAIL_HOST_PASSWORD = 'lzcu joeu ewzt dqvu'     # Your Gmail password or app-specific password
-DEFAULT_FROM_EMAIL = 'mirzahidovj@gmail.com'
-
-
-
-# Celery sozlamalari
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Redis broker URL
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-
-
-
-
-
-#google translate settings
-
-
-# settings.py
-LANGUAGE_CODE = 'uz'
-LANGUAGES = [
-    ('en', _('English')),
-    ('ru', _('Russian')),
-    ('uz', _('Uzbek')),
-]
-
-
-CLICK_SETTINGS = {
-    'service_id': os.getenv('CLICK_SERVICE_ID'),
-    'merchant_id': os.getenv('CLICK_MERCHANT_ID'),
-    'secret_key': os.getenv('CLICK_SECRET_KEY'),
-    'merchant_user_id': os.getenv('CLICK_MERCHANT_USER_ID'),
-}
