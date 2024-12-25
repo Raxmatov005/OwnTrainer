@@ -16,9 +16,7 @@ from datetime import timedelta
 from django.utils.translation import gettext_lazy as _
 from dotenv import load_dotenv
 
-# ----------------------------------------------------------------------------- #
-# Load .env
-# ----------------------------------------------------------------------------- #
+
 load_dotenv('.env')
 DB_NAME = os.getenv('DB_NAME')
 DB_USER = os.getenv('DB_USER')
@@ -26,21 +24,15 @@ DB_PASS = os.getenv('DB_PASS')
 DB_HOST = os.getenv('DB_HOST')
 DB_PORT = os.getenv('DB_PORT')
 
-# ----------------------------------------------------------------------------- #
-# Paths
-# ----------------------------------------------------------------------------- #
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ----------------------------------------------------------------------------- #
-# Security / Environment Settings
-# ----------------------------------------------------------------------------- #
-SECRET_KEY = os.getenv('SECRET_KEY', 'replace-this-with-a-secret-key-if-not-in-env')
+
+SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG', 'False').lower() in ('true', '1', 'yes')
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
-# ----------------------------------------------------------------------------- #
-# Installed Applications
-# ----------------------------------------------------------------------------- #
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -62,13 +54,11 @@ INSTALLED_APPS = [
     'click_app',
 ]
 
-# ----------------------------------------------------------------------------- #
-# Middleware
-# ----------------------------------------------------------------------------- #
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",  # Added Whitenoise middleware for static files
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -76,9 +66,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# ----------------------------------------------------------------------------- #
-# Root Configuration
-# ----------------------------------------------------------------------------- #
+
 ROOT_URLCONF = "register.urls"
 
 TEMPLATES = [
@@ -99,9 +87,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "register.wsgi.application"
 
-# ----------------------------------------------------------------------------- #
-# Database
-# ----------------------------------------------------------------------------- #
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -113,25 +99,21 @@ DATABASES = {
     }
 }
 
-# ----------------------------------------------------------------------------- #
-# Static and Media Files
-# ----------------------------------------------------------------------------- #
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
-    BASE_DIR / 'static',  # Custom static directory (optional, ensure it exists)
+    BASE_DIR / 'static',
 ]
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Add Whitenoise settings
+
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 
-# ----------------------------------------------------------------------------- #
-# Authentication and JWT
-# ----------------------------------------------------------------------------- #
+
 AUTH_USER_MODEL = 'users_app.User'
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -140,13 +122,12 @@ SIMPLE_JWT = {
 }
 
 AUTHENTICATION_BACKENDS = [
-    'users_app.backends.EmailOrPhoneBackend',  # Custom backend
-    'django.contrib.auth.backends.ModelBackend',  # Default backend
+    'users_app.backends.EmailOrPhoneBackend',
+    'django.contrib.auth.backends.ModelBackend',
 ]
 
-# ----------------------------------------------------------------------------- #
-# PayMe, Eskiz, and Click Settings
-# ----------------------------------------------------------------------------- #
+
+
 PAYME_ID = os.getenv('PAYME_ID', '')
 PAYME_KEY = os.getenv('PAYME_KEY', '')
 PAYME_ACCOUNT_FIELD = os.getenv('PAYME_ACCOUNT_FIELD', '')
@@ -165,29 +146,34 @@ CLICK_SETTINGS = {
     'merchant_user_id': os.getenv('CLICK_MERCHANT_USER_ID', ''),
 }
 
-# ----------------------------------------------------------------------------- #
-# Celery
-# ----------------------------------------------------------------------------- #
+
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
 
-# ----------------------------------------------------------------------------- #
-# Language and Timezone
-# ----------------------------------------------------------------------------- #
+
 LANGUAGE_CODE = os.getenv('LANGUAGE_CODE', 'uz')
 LANGUAGES = [
     ('en', _('English')),
     ('ru', _('Russian')),
     ('uz', _('Uzbek')),
 ]
+
+
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_L10N = True
 USE_TZ = True
 
-# ----------------------------------------------------------------------------- #
-# Swagger
-# ----------------------------------------------------------------------------- #
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+
+
 SWAGGER_SETTINGS = {
     'DEFAULT_INFO': 'register.urls.schema_view',
     'USE_SESSION_AUTH': False,
@@ -201,9 +187,7 @@ SWAGGER_SETTINGS = {
     },
 }
 
-# ----------------------------------------------------------------------------- #
-# Default Primary Key Field Type
-# ----------------------------------------------------------------------------- #
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
