@@ -23,7 +23,7 @@ schema_view = get_schema_view(
 
 
 urlpatterns = [
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
@@ -34,5 +34,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path("payment/update/", PaymeCallBackAPIView.as_view()),
     # path('pyclick/', include('pyclick.urls')),
-    path('', include('click_app.urls')),
+    path('click/', include('click_app.urls')),
 ]
