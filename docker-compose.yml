@@ -36,6 +36,8 @@ services:
     networks:
       - owntrainer_network
     restart: always
+    env_file:
+      - .env
 
   worker:
     build:
@@ -52,6 +54,8 @@ services:
     networks:
       - owntrainer_network
     restart: always
+    env_file:
+      - .env
 
   beat:
     build:
@@ -68,6 +72,8 @@ services:
     networks:
       - owntrainer_network
     restart: always
+    env_file:
+      - .env
 
 volumes:
   postgres_data:
