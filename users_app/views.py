@@ -101,7 +101,7 @@ class InitialRegisterView(APIView):
                     try:
                         if is_phone:
                             try:
-                                eskiz_api.send_sms(identifier, message=_("Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi:{code}").format(
+                                eskiz_api.send_sms(identifier, message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {0000}").format(
                                     code=verification_code))
                             except Exception as e:
                                 logger.error(f"Eskiz API error: {e}")
@@ -141,7 +141,7 @@ class InitialRegisterView(APIView):
                     if is_phone:
                         eskiz_api.send_sms(
                             identifier,
-                            message=_("Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi:{code}").format(code=verification_code),
+                            message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {0000}").format(code=verification_code),
                         )
                     else:
                         # Validate email format
