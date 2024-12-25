@@ -118,7 +118,7 @@ class InitialRegisterView(APIView):
 
                             send_mail(
                                 subject=_('Your Verification Code'),
-                                message=_('Your verification code is: {code}').format(code=verification_code),
+                                message=_(f'Your verification code is: {verification_code}').format(code=verification_code),
                                 from_email=settings.EMAIL_HOST_USER,
                                 recipient_list=[identifier],
                             )
@@ -154,7 +154,7 @@ class InitialRegisterView(APIView):
 
                         send_mail(
                             subject=_('Your Verification Code'),
-                            message=_('Your verification code is: {code}').format(code=verification_code),
+                            message=_(f'Your verification code is: {verification_code}').format(code=verification_code),
                             from_email=settings.EMAIL_HOST_USER,
                             recipient_list=[identifier],
                         )
