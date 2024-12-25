@@ -128,22 +128,22 @@ AUTHENTICATION_BACKENDS = [
 
 
 
-PAYME_ID = os.getenv('PAYME_ID', '')
-PAYME_KEY = os.getenv('PAYME_KEY', '')
-PAYME_ACCOUNT_FIELD = os.getenv('PAYME_ACCOUNT_FIELD', '')
-PAYME_AMOUNT_FIELD = os.getenv('PAYME_AMOUNT_FIELD', '')
-PAYME_ACCOUNT_MODEL = os.getenv('PAYME_ACCOUNT_MODEL', '')
+PAYME_ID = os.getenv('PAYME_ID')
+PAYME_KEY = os.getenv('PAYME_KEY')
+PAYME_ACCOUNT_FIELD = os.getenv('PAYME_ACCOUNT_FIELD')
+PAYME_AMOUNT_FIELD = os.getenv('PAYME_AMOUNT_FIELD')
+PAYME_ACCOUNT_MODEL = os.getenv('PAYME_ACCOUNT_MODEL')
 PAYME_ONE_TIME_PAYMENT = os.getenv('PAYME_ONE_TIME_PAYMENT', 'True').lower() in ('true', '1', 'yes')
 
-ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL', '')
-ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD', '')
-ESKIZ_BASE_URL = os.getenv('ESKIZ_BASE_URL', '')
+ESKIZ_EMAIL = os.getenv('ESKIZ_EMAIL')
+ESKIZ_PASSWORD = os.getenv('ESKIZ_PASSWORD')
+ESKIZ_BASE_URL = os.getenv('ESKIZ_BASE_URL')
 
 CLICK_SETTINGS = {
-    'service_id': os.getenv('CLICK_SERVICE_ID', ''),
-    'merchant_id': os.getenv('CLICK_MERCHANT_ID', ''),
-    'secret_key': os.getenv('CLICK_SECRET_KEY', ''),
-    'merchant_user_id': os.getenv('CLICK_MERCHANT_USER_ID', ''),
+    'service_id': os.getenv('CLICK_SERVICE_ID'),
+    'merchant_id': os.getenv('CLICK_MERCHANT_ID'),
+    'secret_key': os.getenv('CLICK_SECRET_KEY'),
+    'merchant_user_id': os.getenv('CLICK_MERCHANT_USER_ID'),
 }
 
 
