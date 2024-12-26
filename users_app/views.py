@@ -117,6 +117,34 @@ class InitialRegisterView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
+    @swagger_auto_schema(
+        operation_description="Register with basic information",
+        consumes=['multipart/form-data'],
+        manual_parameters=[
+            openapi.Parameter('first_name', openapi.IN_FORM, description="First Name", type=openapi.TYPE_STRING,
+                              required=True),
+            openapi.Parameter('last_name', openapi.IN_FORM, description="Last Name", type=openapi.TYPE_STRING,
+                              required=True),
+            openapi.Parameter('email_or_phone', openapi.IN_FORM, description="Email or Phone (+ format)",
+                              type=openapi.TYPE_STRING, required=True),
+            openapi.Parameter('password', openapi.IN_FORM, description="Password", type=openapi.TYPE_STRING,
+                              required=True),
+        ],
+        responses={
+            201: openapi.Response(
+                description="User registered",
+                examples={
+                    "application/json": {
+                        "user_id": 1,
+                        "first_name": "John",
+                        "last_name": "Doe",
+                        "email_or_phone": "+1234567890",
+                        "message": "User registered. Please verify your account."
+                    }
+                }
+            )
+        }
+    )
     def post(self, request):
         serializer = InitialRegisterSerializer(data=request.data)
         if serializer.is_valid():
