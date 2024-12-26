@@ -62,6 +62,33 @@ except Exception as e:
     goal_choices = []
 
 
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def send_verification_email(subject, body, recipient):
+    smtp_server = "smtp.gmail.com"
+    port = 587
+    sender_email = settings.EMAIL_HOST_USER
+    sender_password = settings.EMAIL_HOST_PASSWORD
+
+    try:
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = recipient
+        message["Subject"] = subject
+        message.attach(MIMEText(body, "plain"))
+
+        server = smtplib.SMTP(smtp_server, port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(message)
+        server.quit()
+    except Exception as e:
+        logger.error(f"Email sending failed: {e}")
+        raise
+
+
 class InitialRegisterView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -86,52 +113,36 @@ class InitialRegisterView(APIView):
             if existing_user:
                 # User exists
                 if existing_user.is_active:
-                    # Should not happen now because serializer would've raised error. But just in case:
                     return Response({"error": _("This email or phone number is already registered.")}, status=status.HTTP_400_BAD_REQUEST)
                 else:
-                    # User is inactive, resend verification code
+                    # Resend verification code
                     verification_code = random.randint(1000, 9999)
                     print(verification_code)
                     phone_pattern = re.compile(r'^\+\d+$')
-
                     is_phone = bool(phone_pattern.match(identifier))
-
-
 
                     try:
                         if is_phone:
-                            try:
-                                eskiz_api.send_sms(identifier, message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}").format(
-                                    code=verification_code))
-                            except Exception as e:
-                                logger.error(f"Eskiz API error: {e}")
-                                return Response(
-                                    {"error": _("Failed to send verification code due to Eskiz API issues.")},
-                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                            eskiz_api.send_sms(
+                                identifier,
+                                message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}").format(code=verification_code),
+                            )
                         else:
-                            # Validate email format
-                            validator = EmailValidator()
-                            try:
-                                validator(identifier)
-                            except DjangoValidationError:
-                                return Response({"error": _("Invalid email format.")}, status=status.HTTP_400_BAD_REQUEST)
-
-                            send_mail(
+                            send_verification_email(
                                 subject=_('Your Verification Code'),
-                                message=_(f'Your verification code is: {verification_code}').format(code=verification_code),
-                                from_email=settings.DEFAULT_FROM_EMAIL,
-                                recipient_list=[identifier],
+                                body=_(f'Your verification code is: {verification_code}').format(code=verification_code),
+                                recipient=identifier
                             )
 
                         cache.set(f'verification_code_{existing_user.id}', {'code': verification_code, 'timestamp': datetime.now().timestamp()}, timeout=300)
-                        return Response({"user_id": existing_user.id, "message": _("Verification code resent.")},
-                                        status=status.HTTP_200_OK)
+                        return Response({"user_id": existing_user.id, "message": _("Verification code resent.")}, status=status.HTTP_200_OK)
                     except Exception as e:
                         logger.error(f"Failed to send verification code: {e}")
                         return Response({"error": _("Failed to send verification code. Please try again.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
             else:
-                # No user found, create a new user
-                user = serializer.save()  # Create a new inactive user
+                # Create a new user
+                user = serializer.save()
                 verification_code = random.randint(1000, 9999)
                 print(verification_code)
                 phone_pattern = re.compile(r'^\+\d+$')
@@ -144,19 +155,10 @@ class InitialRegisterView(APIView):
                             message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}").format(code=verification_code),
                         )
                     else:
-                        # Validate email format
-                        validator = EmailValidator()
-                        try:
-                            validator(identifier)
-                        except DjangoValidationError:
-                            user.delete()
-                            return Response({"error": _("Invalid email format.")}, status=status.HTTP_400_BAD_REQUEST)
-
-                        send_mail(
+                        send_verification_email(
                             subject=_('Your Verification Code'),
-                            message=_(f'Your verification code is: {verification_code}').format(code=verification_code),
-                            from_email=settings.DEFAULT_FROM_EMAIL,
-                            recipient_list=[identifier],
+                            body=_(f'Your verification code is: {verification_code}').format(code=verification_code),
+                            recipient=identifier
                         )
                 except Exception as e:
                     logger.error(f"Failed to send verification code: {e}")
@@ -182,23 +184,30 @@ class VerifyCodeView(APIView):
         if serializer.is_valid():
             user_id = serializer.validated_data['user_id']
             code = serializer.validated_data['code']
-            user = User.objects.filter(id=user_id).first()
 
-            if user:
-                cached_data = cache.get(f'verification_code_{user.id}')
-                if cached_data and str(cached_data['code']) == str(code) and \
-                        datetime.now() - datetime.fromtimestamp(cached_data['timestamp']) < timedelta(minutes=1):
-                    user.is_active = True
-                    user.save()
-                    cache.delete(f'verification_code_{user.id}')
-                    return Response({"message": _("Verification successful. You can now complete your profile.")},
-                                    status=status.HTTP_200_OK)
+            # Fetch the user
+            user = User.objects.filter(id=user_id).first()
+            if not user:
+                return Response({"error": _("User not found.")}, status=status.HTTP_404_NOT_FOUND)
+
+            # Fetch the verification code from cache
+            cached_data = cache.get(f'verification_code_{user.id}')
+            if not cached_data:
                 return Response({"error": _("Verification code expired or invalid.")},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            return Response({"error": _("User not found.")}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            if str(cached_data['code']) == str(code):
+                code_timestamp = datetime.fromtimestamp(cached_data['timestamp'])
+                if datetime.now() - code_timestamp < timedelta(minutes=1):
+                    user.is_active = True
+                    user.save()
+                    cache.delete(f'verification_code_{user.id}')  # Clear the code from cache
+
+                    return Response({"message": _("Verification successful. You can now complete your profile.")},
+                                    status=status.HTTP_200_OK)
+                else:
+                    return Response({"error": _("Verification code expired.")}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CompleteProfileView(APIView):
