@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'payme',
     'pyclick',
     'click_app',
+    'corsheaders',
 ]
 
 
@@ -64,6 +65,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
 ]
 
 
@@ -187,6 +190,16 @@ SWAGGER_SETTINGS = {
         }
     },
 }
+
+CORS_ALLOWED_ORIGINS = [
+    "https://owntrainer.uz",
+    "http://owntrainer.uz",
+]
+
+
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
