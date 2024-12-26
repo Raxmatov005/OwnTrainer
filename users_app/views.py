@@ -62,114 +62,157 @@ except Exception as e:
     goal_choices = []
 
 
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
-def send_verification_email(subject, body, recipient):
+import smtplib
+from email.message import EmailMessage
+from django.conf import settings
+import logging
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.parsers import FormParser, MultiPartParser
+from django.utils.translation import gettext as _
+from django.core.cache import cache
+import random
+import re
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# Email sending function
+def send_verification_email(subject, body, to_email):
     smtp_server = "smtp.gmail.com"
     port = 587
     sender_email = settings.EMAIL_HOST_USER
     sender_password = settings.EMAIL_HOST_PASSWORD
 
     try:
-        message = MIMEMultipart()
-        message["From"] = sender_email
-        message["To"] = recipient
-        message["Subject"] = subject
-        message.attach(MIMEText(body, "plain"))
+        # Ensure subject and body are plain strings
+        subject = str(subject)
+        body = str(body)
 
-        server = smtplib.SMTP(smtp_server, port)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.send_message(message)
-        server.quit()
+        # Create an EmailMessage object
+        msg = EmailMessage()
+        msg.set_content(body)
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = to_email
+
+        # Send the email
+        with smtplib.SMTP(smtp_server, port) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+
+        logger.info(f"Email successfully sent to {to_email}")
+
     except Exception as e:
         logger.error(f"Email sending failed: {e}")
         raise
 
-
+# Initial Register View
 class InitialRegisterView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
-    @swagger_auto_schema(
-        operation_description="Register with basic information",
-        consumes=['multipart/form-data'],
-        manual_parameters=[
-            openapi.Parameter('first_name', openapi.IN_FORM, description="First Name", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('last_name', openapi.IN_FORM, description="Last Name", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('email_or_phone', openapi.IN_FORM, description="Email or Phone (+ format)", type=openapi.TYPE_STRING, required=True),
-            openapi.Parameter('password', openapi.IN_FORM, description="Password", type=openapi.TYPE_STRING, required=True),
-        ],
-        responses={201: "User registered. Please verify your account."}
-    )
     def post(self, request):
         serializer = InitialRegisterSerializer(data=request.data)
         if serializer.is_valid():
-            identifier = serializer.validated_data['email_or_phone']
+            identifier = serializer.validated_data["email_or_phone"]
             existing_user = User.objects.filter(email_or_phone=identifier).first()
 
             if existing_user:
                 # User exists
                 if existing_user.is_active:
-                    return Response({"error": _("This email or phone number is already registered.")}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {"error": _("This email or phone number is already registered.")},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 else:
                     # Resend verification code
                     verification_code = random.randint(1000, 9999)
-                    print(verification_code)
-                    phone_pattern = re.compile(r'^\+\d+$')
+                    logger.info(f"Verification code: {verification_code}")
+                    phone_pattern = re.compile(r"^\+\d+$")
                     is_phone = bool(phone_pattern.match(identifier))
 
                     try:
                         if is_phone:
                             eskiz_api.send_sms(
                                 identifier,
-                                message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}").format(code=verification_code),
+                                message=_(
+                                    f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}"
+                                ).format(code=verification_code),
                             )
                         else:
                             send_verification_email(
-                                subject=_('Your Verification Code'),
-                                body=_(f'Your verification code is: {verification_code}').format(code=verification_code),
-                                recipient=identifier
+                                subject=_("Your Verification Code"),
+                                body=_("Your verification code is: {code}").format(
+                                    code=verification_code
+                                ),
+                                to_email=identifier,
                             )
 
-                        cache.set(f'verification_code_{existing_user.id}', {'code': verification_code, 'timestamp': datetime.now().timestamp()}, timeout=300)
-                        return Response({"user_id": existing_user.id, "message": _("Verification code resent.")}, status=status.HTTP_200_OK)
+                        cache.set(
+                            f"verification_code_{existing_user.id}",
+                            {"code": verification_code, "timestamp": datetime.now().timestamp()},
+                            timeout=300,
+                        )
+                        return Response(
+                            {"user_id": existing_user.id, "message": _("Verification code resent.")},
+                            status=status.HTTP_200_OK,
+                        )
                     except Exception as e:
                         logger.error(f"Failed to send verification code: {e}")
-                        return Response({"error": _("Failed to send verification code. Please try again.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        return Response(
+                            {"error": _("Failed to send verification code. Please try again.")},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
 
             else:
                 # Create a new user
                 user = serializer.save()
                 verification_code = random.randint(1000, 9999)
-                print(verification_code)
-                phone_pattern = re.compile(r'^\+\d+$')
+                logger.info(f"Verification code: {verification_code}")
+                phone_pattern = re.compile(r"^\+\d+$")
                 is_phone = bool(phone_pattern.match(identifier))
 
                 try:
                     if is_phone:
                         eskiz_api.send_sms(
                             identifier,
-                            message=_(f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}").format(code=verification_code),
+                            message=_(
+                                f"Workout ilovasiga ro'yxatdan o'tish uchun tasdiqlash kodi: {verification_code}"
+                            ).format(code=verification_code),
                         )
                     else:
                         send_verification_email(
-                            subject=_('Your Verification Code'),
-                            body=_(f'Your verification code is: {verification_code}').format(code=verification_code),
-                            recipient=identifier
+                            subject=_("Your Verification Code"),
+                            body=_("Your verification code is: {code}").format(
+                                code=verification_code
+                            ),
+                            to_email=identifier,
                         )
                 except Exception as e:
                     logger.error(f"Failed to send verification code: {e}")
                     user.delete()
-                    return Response({"error": _("Failed to send verification code. Please try again.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    return Response(
+                        {"error": _("Failed to send verification code. Please try again.")},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
 
-                cache.set(f'verification_code_{user.id}', {'code': verification_code, 'timestamp': datetime.now().timestamp()}, timeout=300)
-                return Response({"user_id": user.id, "message": _("User registered. Please verify your account.")}, status=status.HTTP_201_CREATED)
+                cache.set(
+                    f"verification_code_{user.id}",
+                    {"code": verification_code, "timestamp": datetime.now().timestamp()},
+                    timeout=300,
+                )
+                return Response(
+                    {"user_id": user.id, "message": _("User registered. Please verify your account.")},
+                    status=status.HTTP_201_CREATED,
+                )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class VerifyCodeView(APIView):
     permission_classes = [AllowAny]
