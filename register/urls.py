@@ -20,6 +20,8 @@ schema_view = get_schema_view(
     permission_classes=(permissions.AllowAny,),
     authentication_classes=[JWTAuthentication],
     url="https://owntrainer.uz",# Swagger UI da JWT ni yoqish
+    authentication_classes=[JWTAuthentication],  # Swagger UI da JWT ni yoqish
+    url="https://owntrainer.uz",
 )
 
 
