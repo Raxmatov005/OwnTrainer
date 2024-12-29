@@ -88,6 +88,12 @@ class CompleteProfileSerializer(serializers.ModelSerializer):
         return value
 
 
+    def validate_age(self,value):
+        if value < 18 or value > 50:
+            raise serializers.ValidationError(_("Age must be between 18 and 50 years."))
+        return value
+
+
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

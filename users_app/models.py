@@ -254,6 +254,10 @@ class Exercise(models.Model):
 
     difficulty_level = models.CharField(max_length=50)  # E.g., Beginner, Intermediate, Advanced
     target_muscle = models.CharField(max_length=255)
+    target_muscle_uz = models.CharField(max_length=255, blank=True, null=True)
+    target_muscle_ru = models.CharField(max_length=255, blank=True, null=True)
+    target_muscle_en = models.CharField(max_length=255, blank=True, null=True)
+
     video_url = models.URLField(blank=True, null=True)
     image = models.ImageField(upload_to='exercise_images/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -273,6 +277,15 @@ class Exercise(models.Model):
             self.description_ru = translate_text(self.description, 'ru')
         if not self.description_en:
             self.description_en = translate_text(self.description, 'en')
+
+
+        if not self.target_muscle_uz:
+            self.target_muscle_uz = translate_text(self.target_muscle, 'uz')
+        if not self.target_muscle_ru:
+            self.target_muscle_ru = translate_text(self.target_muscle, 'ru')
+        if not self.target_muscle_en:
+            self.target_muscle_en = translate_text(self.target_muscle, 'en')
+
 
         super(Exercise, self).save(*args, **kwargs)
 

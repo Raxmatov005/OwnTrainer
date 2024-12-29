@@ -96,6 +96,7 @@ class ExerciseSerializer(serializers.ModelSerializer):
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
         data['difficulty_level'] = translate_field(instance, 'difficulty_level', language)
+        data['target_muscle'] = translate_field(instance, 'target_muscle', language)
         return data
 
 

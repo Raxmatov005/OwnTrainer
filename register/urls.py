@@ -2,10 +2,11 @@ from django.urls import path, include
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from payment.views import PaymeCallBackAPIView
 from django.contrib import admin
+
+
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -18,12 +19,8 @@ schema_view = get_schema_view(
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),
-    authentication_classes=[JWTAuthentication],
-    url="https://owntrainer.uz",# Swagger UI da JWT ni yoqish
-    authentication_classes=[JWTAuthentication],  # Swagger UI da JWT ni yoqish
     url="https://owntrainer.uz",
 )
-
 
 urlpatterns = [
     path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
@@ -36,6 +33,6 @@ urlpatterns = [
     path("api/admin/", include('admin_app.urls')),
     path('admin/', admin.site.urls),
     path("payment/update/", PaymeCallBackAPIView.as_view()),
-    # path('pyclick/', include('pyclick.urls')),
     path('click/', include('click_app.urls')),
 ]
+

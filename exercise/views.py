@@ -147,7 +147,9 @@ class SessionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(tags=['Sessions'],
                          operation_description=_("List completed sessions and the next upcoming session for the user"))
     def list(self, request):
-
+        print(f"Request User: {request.user}")
+        print(f"Is Authenticated: {request.user.is_authenticated}")
+        print(f"Is Superuser: {request.user.is_superuser}")
         print(request.user.is_staff)
         print(request.user.is_superuser)
         if request.user.is_staff:  # Admin user
@@ -194,7 +196,7 @@ class SessionViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Create a new session for a program"))
     def create(self, request):
-        language = self.get_user_language()
+        # language = self.get_user_language()
 
         if not request.user.is_superuser:
             message = _("You do not have permission to create a session.")

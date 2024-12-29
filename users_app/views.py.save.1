@@ -5,7 +5,7 @@ from users_app.models import (User, Notification, Program, UserProgram, MealComp
                               SessionCompletion, ExerciseCompletion, Program, UserProgram, Session,
                               MealCompletion, SessionCompletion, UserProgram, Session, MealCompletion,
                               SessionCompletion, ExerciseCompletion)
-
+from django.utils.timezone import now
 from .models import Notification
 from django.core.exceptions import ValidationError as DjangoValidationError
 from users_app.serializers import (
@@ -13,13 +13,12 @@ from users_app.serializers import (
     ForgotPasswordSerializer, ResetPasswordSerializer,
     ProgramSerializer, LanguageUpdateSerializer,
     UserPaymentSerializer, UserProfileSerializer, CompleteProfileSerializer, UserProfileUpdateSerializer
-	)
+)
 from django.core.validators import EmailValidator
 import random
 import logging
 import re
-from datetime import datetime, timedelta, timezone	
-
+from datetime import datetime, timedelta
 
 from django.core.mail import send_mail
 from django.core.cache import cache
@@ -70,12 +69,28 @@ except Exception as e:
 import smtplib
 from email.message import EmailMessage
 from django.conf import settings
+import logging
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.parsers import FormParser, MultiPartParser
+from django.utils.translation import gettext as _
+from django.core.cache import cache
+import random
+import re
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
+import smtplib
+import socket
+from email.message import EmailMessage
+from django.conf import settings
+import logging
 
-
-
-
+logger = logging.getLogger(__name__)
 
 def send_verification_email(subject, body, to_email):
     smtp_server = "smtp.gmail.com"
@@ -246,112 +261,43 @@ class InitialRegisterView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-
-
-
-
-
 class VerifyCodeView(APIView):
-    """
-    Verify the user's code and activate the user account.
-    """
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
-        operation_description="Verify a user's code to activate the account.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'user_id': openapi.Schema(
-                    type=openapi.TYPE_INTEGER, 
-                    description="The ID of the user."
-                ),
-                'code': openapi.Schema(
-                    type=openapi.TYPE_STRING, 
-                    description="The verification code sent to the user."
-                ),
-            },
-            required=['user_id', 'code'],
-        ),
-        responses={
-            200: openapi.Response(
-                description="Verification successful.",
-                examples={
-                    "application/json": {
-                        "message": "Verification successful. You can now complete your profile."
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Invalid verification code or expired.",
-                examples={
-                    "application/json": {
-                        "error": "Verification code expired or invalid."
-                    }
-                }
-            ),
-            404: openapi.Response(
-                description="User not found.",
-                examples={
-                    "application/json": {
-                        "error": "User not found."
-                    }
-                }
-            ),
-        },
+        operation_description="Verify the user with a given code",
+        request_body=VerifyCodeSerializer,
+        responses={200: "Verification successful. You can now complete your profile."}
     )
     def post(self, request):
-        user_id = request.data.get('user_id')
-        code = request.data.get('code')
+        serializer = VerifyCodeSerializer(data=request.data)
+        if serializer.is_valid():
+            user_id = serializer.validated_data['user_id']
+            code = serializer.validated_data['code']
 
-        # Fetch the user
-        user = User.objects.filter(id=user_id).first()
-        if not user:
-            return Response(
-                {"error": _("User not found.")},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            # Fetch the user
+            user = User.objects.filter(id=user_id).first()
+            if not user:
+                return Response({"error": _("User not found.")}, status=status.HTTP_404_NOT_FOUND)
 
-        # Fetch the verification code from cache
-        cached_data = cache.get(f'verification_code_{user.id}')
-        print(f"This is cashed data if it is exists {cached_data}")
-        if not cached_data:
-            return Response(
-                {"error": _("Verification code expired or invalid.")},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Compare the codes
-        if str(cached_data['code']) != str(code):
-            return Response(
-                {"error": _("Invalid verification code.")},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Check if the code has expired
-        code_timestamp = datetime.fromtimestamp(cached_data['timestamp'])
-        if datetime.now() - code_timestamp > timedelta(minutes=10):  # Adjust expiration time if needed
-            return Response(
-                {"error": _("Verification code expired.")},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Activate the user
-        user.is_active = True
-        user.save()
-
-        # Clear the code from cache
-        cache.delete(f'verification_code_{user.id}')
-
-        return Response(
-            {"message": _("Verification successful. You can now complete your profile.")},
-            status=status.HTTP_200_OK
-        )
+            # Fetch the verification code from cache
+            cached_data = cache.get(f'verification_code_{user.id}')
+            if not cached_data:
+                return Response({"error": _("Verification code expired or invalid.")},
+                                status=status.HTTP_400_BAD_REQUEST)
 
 
+            if str(cached_data['code']) == str(code):
+                code_timestamp = datetime.fromtimestamp(cached_data['timestamp'], tz=timezone)
+                if datetime.utcnow() - code_timestamp < timedelta(minutes=600):
+                    user.is_active = True
+                    user.save()
+                    cache.delete(f'verification_code_{user.id}')  # Clear the code from cache
 
-
-
+                    return Response({"message": _("Verification successful. You can now complete your profile.")},
+                                    status=status.HTTP_200_OK)
+                else:
+                    return Response({"error": _("Verification code expired.")}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CompleteProfileView(APIView):
