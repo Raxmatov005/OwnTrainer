@@ -182,6 +182,8 @@ class WorkoutCategory(models.Model):
     description_ru = models.TextField(blank=True, null=True)
     description_en = models.TextField(blank=True, null=True)
 
+    workout_image = models.ImageField(upload_to='workout-category/', null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.category_name_uz:
             self.category_name_uz = translate_text(self.category_name, 'uz')

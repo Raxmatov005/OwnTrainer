@@ -38,20 +38,22 @@ class ProgramSerializer(serializers.ModelSerializer):
 
 
 class SessionSerializer(serializers.ModelSerializer):
-    exercises = serializers.PrimaryKeyRelatedField(queryset=Exercise.objects.all(), many=True)
+    exercises = serializers.PrimaryKeyRelatedField(queryset=Exercise.objects.all(), many=True)  # bu oldin exercises edi
     meals = serializers.PrimaryKeyRelatedField(queryset=Meal.objects.all(), many=True)
 
     class Meta:
         model = Session
         fields = [
-            'id', 'program', 'calories_burned',
+            'id', 'cover_image', 'program', 'calories_burned',
             'session_number', 'session_time', 'exercises', 'meals'
         ]
+
         extra_kwargs = {
+            'cover_image': {'label': _("Cover Image")},
             'calories_burned': {'label': _("Calories Burned")},
             'session_time': {'label': _("Session Time")},
             'session_number': {'label': _("Session Number"), 'read_only': True},  # Read-only to ensure auto-assignment
-            'exercises': {'label': _("Exercises")},
+            'WorkoutCategory': {'label': _("Exercises")},
             'meals': {'label': _("Meals")},
         }
 
@@ -103,10 +105,11 @@ class ExerciseSerializer(serializers.ModelSerializer):
 class WorkoutCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkoutCategory
-        fields = ['id', 'category_name', 'description']
+        fields = ['id', 'category_name', 'description', 'workout_image']
         extra_kwargs = {
             'category_name': {'label': _("Category Name")},
             'description': {'label': _("Description")},
+            'workout_image': {'label': _("Workout Image")},
         }
 
     def to_representation(self, instance):

@@ -17,7 +17,7 @@ from django.utils.translation import gettext as _
 from .serializers import SessionSerializer
 from django.utils.dateparse import parse_date
 from django.shortcuts import get_object_or_404
-
+from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
@@ -96,9 +96,21 @@ class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
     serializer_class = SessionSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
+
 
     def get_user_language(self,request):
         return getattr(request.user, 'language', 'en')
+
+
+
+    def get_serializer(self, *args, **kwargs):
+        # Override to avoid using any serializer for the `reset_today_session` action
+        if self.action == 'reset_today_session':
+            return None  # No serializer required for this action
+        return super().get_serializer(*args, **kwargs)
+
+
 
     @action(detail=False, methods=['get'], url_path='by-session-number')
     @swagger_auto_schema(
@@ -177,8 +189,10 @@ class SessionViewSet(viewsets.ModelViewSet):
 
             # Collect session IDs to display
             session_ids = []
+            if next_upcoming_session:
+
             # if next_upcoming_session:
-            session_ids.append(next_upcoming_session.session_id)
+                session_ids.append(next_upcoming_session.session_id)
 
             # Filter sessions based on the collected session IDs
             sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
@@ -194,32 +208,10 @@ class SessionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(session)
         return Response({"session": serializer.data})
 
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Create a new session for a program"))
-    def create(self, request):
-        # language = self.get_user_language()
 
-        if not request.user.is_superuser:
-            message = _("You do not have permission to create a session.")
-            return Response({"error": message}, status=403)
 
-        program_id = request.data.get('program')
-        if not program_id:
-            message = _("Program ID is required to create a session.")
-            return Response({"error": message}, status=400)
 
-        try:
-            program = Program.objects.get(id=program_id)
-        except Program.DoesNotExist:
-            message = _("Specified program does not exist.")
-            return Response({"error": message}, status=404)
 
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            message = _("Session created successfully")
-            return Response({"message": message, "session": serializer.data}, status=201)
-
-        return Response(serializer.errors, status=400)
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Update a session by ID"))
     def update(self, request, pk=None):
@@ -248,7 +240,48 @@ class SessionViewSet(viewsets.ModelViewSet):
             message = _("Session partially updated successfully")
             return Response({"message": message, "session": serializer.data})
         return Response(serializer.errors, status=400)
+ 
+    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Create a new session for a program"))
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({"error": _("You do not have permission to create a session.")}, status=status.HTTP_403_FORBIDDEN)
 
+        program_id = request.data.get('program')
+        if not program_id:
+            return Response({"error": _("Program ID is required to create a session.")}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            program = Program.objects.get(id=program_id)
+        except Program.DoesNotExist:
+            return Response({"error": _("Specified program does not exist.")}, status=status.HTTP_404_NOT_FOUND)
+
+        # Convert exercises and meals to lists of integers
+        exercises = request.data.get('exercises', [])
+        meals = request.data.get('meals', [])
+
+        if isinstance(exercises, str):
+            exercises = exercises.split(',')
+        if isinstance(meals, str):
+            meals = meals.split(',')
+
+        request.data._mutable = True  # Allow modification of QueryDict (for testing purposes)
+        request.data.setlist('exercises', exercises)
+        request.data.setlist('meals', meals)
+
+        # Add cover image if present
+        cover_image = request.FILES.get('cover_image')
+        if cover_image:
+            request.data['cover_image'] = cover_image
+
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": _("Session created successfully"), "session": serializer.data},
+                status=status.HTTP_201_CREATED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Delete a session"))
     def destroy(self, request, pk=None):
         language = self.get_user_language()
@@ -259,6 +292,43 @@ class SessionViewSet(viewsets.ModelViewSet):
         session.delete()
         message = _("Session deleted successfully")
         return Response({"message": message})
+
+
+
+    @action(detail=False, methods=['post'], url_path='reset-today-session', permission_classes=[IsAuthenticated])
+    @swagger_auto_schema(
+        operation_description=_("Reset today's session for the logged-in user"),
+        responses={
+            200: "Today's session has been reset successfully.",
+            404: "No session found for today."
+        },
+        request_body=None
+         )
+    def reset_today_session(self, request):
+        """
+        Custom endpoint to reset today's session for the logged-in user.
+        """
+        # Fetch today's session for the user
+        today_session = SessionCompletion.objects.filter(
+            user=request.user,
+            session_date=now().date()
+        ).first()
+
+        if not today_session:
+            return Response(
+                {"error": _("No session found for today.")},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Reset session completion status
+        today_session.is_completed = False
+        today_session.completion_date = None
+        today_session.save()
+
+        return Response(
+            {"message": _("Today's session has been reset successfully.")},
+            status=status.HTTP_200_OK
+        )
 
 
 class ExerciseViewSet(viewsets.ModelViewSet):
@@ -280,6 +350,47 @@ class ExerciseViewSet(viewsets.ModelViewSet):
                 sessions__program__is_active=True)  # Foydalanuvchi uchun faqat aktiv dasturlarni ko'rsatish
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
+
+
+    @swagger_auto_schema(
+        tags=['Exercises'],
+        operation_description=_("Retrieve exercises by category ID"),
+        manual_parameters=[
+            openapi.Parameter(
+                'category_id', openapi.IN_QUERY, 
+                description="ID of the category to filter exercises by",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="A list of exercises in the specified category",
+                schema=ExerciseSerializer(many=True)
+            ),
+            400: "Category ID is required",
+            404: "No exercises found for the given category"
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='by-category')
+    def by_category(self, request):
+        """
+        Custom endpoint to get exercises filtered by category ID.
+        """
+        language = self.get_user_language()
+        category_id = request.query_params.get('category_id')
+        if not category_id:
+            message = translate_text("Category ID is required.", language)
+            return Response({"error": message}, status=400)
+
+        queryset = self.get_queryset().filter(category_id=category_id)
+        if not queryset.exists():
+            message = translate_text("No exercises found for the given category.", language)
+            return Response({"message": message}, status=404)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({"exercises": serializer.data})
+
 
     @swagger_auto_schema(tags=['Exercises'], operation_description=_("Retrieve exercise by ID"))
     def retrieve(self, request, pk=None):
@@ -344,6 +455,8 @@ class WorkoutCategoryViewSet(viewsets.ModelViewSet):
     queryset = WorkoutCategory.objects.all()
     serializer_class = WorkoutCategorySerializer
     permission_classes = [IsAuthenticated,IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
+
 
     def get_user_language(self):
         # Assuming the user's preferred language is stored in the User model
@@ -362,18 +475,24 @@ class WorkoutCategoryViewSet(viewsets.ModelViewSet):
         return Response({"workout_category": serializer.data})
 
     @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Create a new workout category"))
-    def create(self, request):
+    def create(self, request, *args, **kwargs):
         language = self.get_user_language()
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to create a workout category.", language)
             return Response({"error": message}, status=403)
-        serializer = self.get_serializer(data=request.data)
+        
+        # Parse the request for form data and files
+        data = request.data.copy()
+        workout_image = request.FILES.get('workout_image')
+        if workout_image:
+            data['workout_image'] = workout_image
+
+        serializer = self.get_serializer(data=data)
         if serializer.is_valid():
             serializer.save()
             message = translate_text("Workout category created successfully", language)
-            return Response({"message": message, "workout_category": serializer.data})
+            return Response({"message": message, "workout_category": serializer.data}, status=201)
         return Response(serializer.errors, status=400)
-
     @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Update a workout category by ID"))
     def update(self, request, pk=None):
         language = self.get_user_language()

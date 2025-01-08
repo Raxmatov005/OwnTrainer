@@ -1,4 +1,4 @@
-
+\
 from django.contrib.auth import authenticate, login, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from users_app.models import (User, Notification, Program, UserProgram, MealCompletion, Session,
@@ -253,6 +253,8 @@ class InitialRegisterView(APIView):
 
 
 class VerifyCodeView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
     """
     Verify the user's code and activate the user account.
     """
