@@ -92,28 +92,198 @@ class ProgramViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils.translation import gettext_lazy as _
+from django.utils.timezone import now
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from rest_framework.parsers import MultiPartParser, FormParser
+
+# Make sure to import your models & serializers
+# from .permissions import IsAdminOrReadOnly  # or wherever you defined this
+# from users_app.models import Program, UserProgram, Session, SessionCompletion
+# from .serializers import ProgramSerializer, SessionSerializer
+
 class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
     serializer_class = SessionSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
 
-
-    def get_user_language(self,request):
+    def get_user_language(self, request):
         return getattr(request.user, 'language', 'en')
 
-
-
     def get_serializer(self, *args, **kwargs):
-        # Override to avoid using any serializer for the `reset_today_session` action
+        # Skip serializer requirement for reset_today_session if needed
         if self.action == 'reset_today_session':
-            return None  # No serializer required for this action
+            return None
         return super().get_serializer(*args, **kwargs)
 
-
-
-    @action(detail=False, methods=['get'], url_path='by-session-number')
     @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Create a new session for a program")
+    )
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({"error": _("You do not have permission to create a session.")},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        program_id = request.data.get('program')
+        if not program_id:
+            return Response({"error": _("Program ID is required to create a session.")},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate program existence
+        try:
+            program = Program.objects.get(id=program_id)
+        except Program.DoesNotExist:
+            return Response({"error": _("Specified program does not exist.")},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Convert exercises and meals to lists
+        exercises = request.data.get('exercises', [])
+        meals = request.data.get('meals', [])
+        if isinstance(exercises, str):
+            exercises = exercises.split(',')
+        if isinstance(meals, str):
+            meals = meals.split(',')
+
+        # Make QueryDict mutable to set exercises/meals
+        request.data._mutable = True
+        request.data.setlist('exercises', exercises)
+        request.data.setlist('meals', meals)
+
+        # Handle cover_image if provided
+        cover_image = request.FILES.get('cover_image')
+        if cover_image:
+            request.data['cover_image'] = cover_image
+
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "message": _("Session created successfully"),
+                "session": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Retrieve session by ID")
+    )
+    def retrieve(self, request, pk=None):
+        session = self.get_object()
+        serializer = self.get_serializer(session)
+        return Response({"session": serializer.data})
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Update a session by ID")
+    )
+    def update(self, request, pk=None):
+        language = self.get_user_language(request)
+        session = self.get_object()
+        if not request.user.is_superuser:
+            message = _("You do not have permission to update this session.")
+            return Response({"error": message}, status=403)
+
+        serializer = self.get_serializer(session, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            message = _("Session updated successfully")
+            return Response({"message": message, "session": serializer.data})
+        return Response(serializer.errors, status=400)
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Partially update a session by ID")
+    )
+    def partial_update(self, request, pk=None):
+        language = self.get_user_language(request)
+        session = self.get_object()
+        if not request.user.is_superuser:
+            message = _("You do not have permission to partially update this session.")
+            return Response({"error": message}, status=403)
+
+        serializer = self.get_serializer(session, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            message = _("Session partially updated successfully")
+            return Response({"message": message, "session": serializer.data})
+        return Response(serializer.errors, status=400)
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Delete a session")
+    )
+    def destroy(self, request, pk=None):
+        language = self.get_user_language(request)
+        if not request.user.is_superuser:
+            message = _("You do not have permission to delete this session.")
+            return Response({"error": message}, status=403)
+
+        session = self.get_object()
+        session.delete()
+        message = _("Session deleted successfully")
+        return Response({"message": message})
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("List sessions for the user. Staff sees all sessions.")
+    )
+    def list(self, request):
+        """
+        1) Staff => returns all sessions.
+        2) Regular user => returns all incomplete sessions (by session_number).
+           Adds a 'locked' field to indicate sessions after the next incomplete session.
+        """
+        if request.user.is_staff:
+            sessions = Session.objects.all().order_by('session_number')
+            serializer = self.get_serializer(sessions, many=True)
+            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
+        else:
+            # Check for active program
+            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+            if not user_program:
+                return Response(
+                    {"error": _("No active program found for the user.")},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Find all incomplete SessionCompletion for this program
+            incomplete_sc = SessionCompletion.objects.filter(
+                user=request.user,
+                session__program=user_program.program,
+                is_completed=False
+            ).select_related('session').order_by('session__session_number')
+
+            if not incomplete_sc.exists():
+                return Response({"message": _("You have completed all sessions!")}, status=200)
+
+            # The "next" session is the first incomplete in ascending order
+            next_sc = incomplete_sc.first()
+            next_session_number = next_sc.session.session_number
+
+            # Collect the Session IDs for all incomplete SessionCompletions
+            session_ids = [sc.session_id for sc in incomplete_sc]
+            sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
+
+            # Build JSON with "locked" = True/False
+            data = []
+            for s in sessions:
+                ser = self.get_serializer(s).data
+                ser["locked"] = (s.session_number > next_session_number)
+                data.append(ser)
+
+            return Response({"sessions": data}, status=200)
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Get a session by session_number for the user's active program"),
         manual_parameters=[
             openapi.Parameter(
                 'session_number',
@@ -129,12 +299,12 @@ class SessionViewSet(viewsets.ModelViewSet):
             404: "Session not found or no active program."
         }
     )
+    @action(detail=False, methods=['get'], url_path='by-session-number')
     def get_by_session_number(self, request):
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-
         if not user_program:
             return Response(
-                {"error": "No active program found for the logged-in user."},
+                {"error": _("No active program found for the logged-in user.")},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
@@ -144,7 +314,6 @@ class SessionViewSet(viewsets.ModelViewSet):
                 {"error": "session_number is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
         try:
             session = Session.objects.get(program=user_program.program, session_number=session_number)
         except Session.DoesNotExist:
@@ -156,146 +325,6 @@ class SessionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(session)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(tags=['Sessions'],
-                         operation_description=_("List completed sessions and the next upcoming session for the user"))
-    def list(self, request):
-        print(f"Request User: {request.user}")
-        print(f"Is Authenticated: {request.user.is_authenticated}")
-        print(f"Is Superuser: {request.user.is_superuser}")
-        print(request.user.is_staff)
-        print(request.user.is_superuser)
-        if request.user.is_staff:  # Admin user
-            # Fetch all sessions for admin
-            sessions = Session.objects.all().order_by('session_number')
-            serializer = self.get_serializer(sessions, many=True)
-            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
-        else:  # Regular user
-            # Check if the user has an active program
-            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-            if not user_program:
-                return Response(
-                    {"error": _("No active program found for the user.")},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-
-
-            # Fetch the next upcoming session
-            next_upcoming_session = SessionCompletion.objects.filter(
-                user=request.user,
-                is_completed=False,
-                session_date__gte=now().date()
-            ).order_by('session_date').first()
-
-            # Collect session IDs to display
-            session_ids = []
-            if next_upcoming_session:
-
-            # if next_upcoming_session:
-                session_ids.append(next_upcoming_session.session_id)
-
-            # Filter sessions based on the collected session IDs
-            sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
-
-            # Serialize and return the filtered sessions
-            serializer = self.get_serializer(sessions, many=True)
-            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
-
-
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Retrieve session by ID"))
-    def retrieve(self, request, pk=None):
-        session = self.get_object()
-        serializer = self.get_serializer(session)
-        return Response({"session": serializer.data})
-
-
-
-
-
-
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Update a session by ID"))
-    def update(self, request, pk=None):
-        language = self.get_user_language()
-        session = self.get_object()
-        if not request.user.is_superuser:
-            message = _("You do not have permission to update this session.")
-            return Response({"error": message}, status=403)
-        serializer = self.get_serializer(session, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            message = _("Session updated successfully")
-            return Response({"message": message, "session": serializer.data})
-        return Response(serializer.errors, status=400)
-
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Partially update a session by ID"))
-    def partial_update(self, request, pk=None):
-        language = self.get_user_language()
-        session = self.get_object()
-        if not request.user.is_superuser:
-            message = _("You do not have permission to partially update this session.")
-            return Response({"error": message}, status=403)
-        serializer = self.get_serializer(session, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            message = _("Session partially updated successfully")
-            return Response({"message": message, "session": serializer.data})
-        return Response(serializer.errors, status=400)
- 
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Create a new session for a program"))
-    def create(self, request, *args, **kwargs):
-        if not request.user.is_superuser:
-            return Response({"error": _("You do not have permission to create a session.")}, status=status.HTTP_403_FORBIDDEN)
-
-        program_id = request.data.get('program')
-        if not program_id:
-            return Response({"error": _("Program ID is required to create a session.")}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            program = Program.objects.get(id=program_id)
-        except Program.DoesNotExist:
-            return Response({"error": _("Specified program does not exist.")}, status=status.HTTP_404_NOT_FOUND)
-
-        # Convert exercises and meals to lists of integers
-        exercises = request.data.get('exercises', [])
-        meals = request.data.get('meals', [])
-
-        if isinstance(exercises, str):
-            exercises = exercises.split(',')
-        if isinstance(meals, str):
-            meals = meals.split(',')
-
-        request.data._mutable = True  # Allow modification of QueryDict (for testing purposes)
-        request.data.setlist('exercises', exercises)
-        request.data.setlist('meals', meals)
-
-        # Add cover image if present
-        cover_image = request.FILES.get('cover_image')
-        if cover_image:
-            request.data['cover_image'] = cover_image
-
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": _("Session created successfully"), "session": serializer.data},
-                status=status.HTTP_201_CREATED,
-            )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
-    @swagger_auto_schema(tags=['Sessions'], operation_description=_("Delete a session"))
-    def destroy(self, request, pk=None):
-        language = self.get_user_language()
-        if not request.user.is_superuser:
-            message = _("You do not have permission to delete this session.")
-            return Response({"error": message}, status=403)
-        session = self.get_object()
-        session.delete()
-        message = _("Session deleted successfully")
-        return Response({"message": message})
-
-
-
-    @action(detail=False, methods=['post'], url_path='reset-today-session', permission_classes=[IsAuthenticated])
     @swagger_auto_schema(
         operation_description=_("Reset today's session for the logged-in user"),
         responses={
@@ -303,33 +332,30 @@ class SessionViewSet(viewsets.ModelViewSet):
             404: "No session found for today."
         },
         request_body=None
-         )
+    )
+    @action(detail=False, methods=['post'], url_path='reset-today-session', permission_classes=[IsAuthenticated])
     def reset_today_session(self, request):
         """
-        Custom endpoint to reset today's session for the logged-in user.
+        This endpoint resets the session assigned to "today" (based on session_date).
+        If you no longer rely on session_date, you might not need this anymore.
         """
-        # Fetch today's session for the user
-        today_session = SessionCompletion.objects.filter(
+        today_sc = SessionCompletion.objects.filter(
             user=request.user,
             session_date=now().date()
         ).first()
 
-        if not today_session:
-            return Response(
-                {"error": _("No session found for today.")},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        if not today_sc:
+            return Response({"error": _("No session found for today.")},
+                            status=status.HTTP_404_NOT_FOUND)
 
-        # Reset session completion status
-        today_session.is_completed = False
-        today_session.completion_date = None
-        today_session.save()
+        today_sc.is_completed = False
+        today_sc.completion_date = None
+        today_sc.save()
 
         return Response(
             {"message": _("Today's session has been reset successfully.")},
             status=status.HTTP_200_OK
         )
-
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
