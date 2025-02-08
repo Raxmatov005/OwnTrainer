@@ -818,8 +818,8 @@ class ProgressView(APIView):
             properties={
                 "type": openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    enum=["daily", "weekly"],
-                    description="Progress type (daily or weekly)"
+                    enum=["daily", "weekly", "monthly"],
+                    description="Progress type (daily or weekly, or monthly)"
                 ),
                 "date": openapi.Schema(
                     type=openapi.TYPE_STRING,
@@ -863,9 +863,9 @@ class ProgressView(APIView):
         date_str = request.data.get("date")
 
         # Validate query_type
-        if query_type not in ["daily", "weekly"]:
+        if query_type not in ["daily", "weekly", "monthly"]:
             return Response(
-                {"error": "Invalid type. Expected 'daily' or 'weekly'."},
+                {"error": "Invalid type. Expected 'daily' or 'weekly' or 'monthly'."},
                 status=400,
             )
 
@@ -885,6 +885,8 @@ class ProgressView(APIView):
             progress = self.calculate_daily_progress(request.user, date)
         elif query_type == "weekly":
             progress = self.calculate_weekly_progress(request.user, date)
+        elif query_type == "monthly":
+            progress = self.calculate_monthly_progress(request.user, date)
 
         return Response(progress, status=200)
 
@@ -966,6 +968,53 @@ class ProgressView(APIView):
         return {
             "week_start_date": str(week_start),
             "week_end_date": str(week_end),
+            "completed_sessions_count": sum(1 for session in sessions if session["status"] == "completed"),
+            "missed_sessions_count": sum(1 for session in sessions if session["status"] == "missed"),
+            "total_calories_burned": total_calories_burned,
+            "completed_meals_count": sum(1 for meal in meals if meal["status"] == "completed"),
+            "missed_meals_count": sum(1 for meal in meals if meal["status"] == "missed"),
+            "calories_gained": total_calories_gained,
+            "sessions": sessions,
+            "meals": meals,
+        }
+    def calculate_monthly_progress(self, user, date):
+        # Calculate month start and end dates
+        month_start = date.replace(day=1)
+        next_month = month_start.replace(day=28) + timedelta(days=4)  # Ensures we jump to next month
+        month_end = next_month - timedelta(days=next_month.day)
+
+        completed_sessions = SessionCompletion.objects.filter(
+            user=user,
+            session_date__range=(month_start, month_end),
+        )
+        sessions = [
+            {
+                "id": session.session.id,
+                "calories_burned": float(session.session.calories_burned) if session.is_completed else 0.0,
+                "status": "completed" if session.is_completed else "missed"
+            }
+            for session in completed_sessions
+        ]
+
+        completed_meals = MealCompletion.objects.filter(
+            user=user,
+            meal_date__range=(month_start, month_end),
+        )
+        meals = [
+            {
+                "id": meal.meal.id,
+                "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
+                "status": "completed" if meal.is_completed else "missed"
+            }
+            for meal in completed_meals
+        ]
+
+        total_calories_burned = sum(session["calories_burned"] for session in sessions)
+        total_calories_gained = sum(meal["calories"] for meal in meals)
+
+        return {
+            "month_start_date": str(month_start),
+            "month_end_date": str(month_end),
             "completed_sessions_count": sum(1 for session in sessions if session["status"] == "completed"),
             "missed_sessions_count": sum(1 for session in sessions if session["status"] == "missed"),
             "total_calories_burned": total_calories_burned,
