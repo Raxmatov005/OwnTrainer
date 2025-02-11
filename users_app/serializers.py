@@ -54,6 +54,7 @@ class InitialRegisterSerializer(serializers.ModelSerializer):
 
 
 class CompleteProfileSerializer(serializers.ModelSerializer):
+    print(serializer.fields['goal'].choices)
     goal = serializers.ChoiceField(choices=[], label=_("Goal"), help_text=_("Select your goal"))
 
     class Meta:
