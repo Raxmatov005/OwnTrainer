@@ -416,7 +416,7 @@ class CompleteProfileView(APIView):
                 openapi.IN_FORM,
                 description="Goal",
                 type=openapi.TYPE_STRING,
-                enum=lambda: get_goal_choices(),
+                enum=get_goal_choices(),
                 required=True
             ),
         ],
