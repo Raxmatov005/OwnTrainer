@@ -362,6 +362,16 @@ class CompleteProfileView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [FormParser, MultiPartParser]  # Enable form data parsing
 
+    def get_serializer(self, *args, **kwargs):
+        """
+        This method dynamically fetches the latest `goal` choices before initializing the serializer.
+        """
+        goal_choices = [(goal, goal) for goal in Program.objects.values_list('program_goal', flat=True)]
+        serializer = CompleteProfileSerializer(*args, **kwargs)
+        serializer.fields['goal'].choices = goal_choices
+        return serializer
+
+
     @swagger_auto_schema(
         operation_description="Complete the user profile with additional details",
         consumes=['multipart/form-data'],
@@ -416,7 +426,7 @@ class CompleteProfileView(APIView):
                 openapi.IN_FORM,
                 description="Goal",
                 type=openapi.TYPE_STRING,
-                enum=get_goal_choices(),
+                enum=[goal[0] for goal in Program.objects.values_list('program_goal', flat=True)],
                 required=True
             ),
         ],
