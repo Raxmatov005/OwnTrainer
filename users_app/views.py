@@ -352,29 +352,33 @@ class VerifyCodeView(APIView):
 
 
 
+from users_app.swagger_schema import DynamicGoalSchema
 
-
-
-def get_latest_goal_choices():
-    """ Fetch the latest goal choices as a list of full strings. """
-    return list(Program.objects.values_list('program_goal', flat=True))  # ✅ Fetch full names, not letters
 
 class CompleteProfileView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [FormParser, MultiPartParser]
+    swagger_schema = DynamicGoalSchema
+
+    def get_goal_choices(self):
+        """ Fetches the latest goal choices from the database dynamically. """
+        return [(goal, goal) for goal in Program.objects.values_list('program_goal', flat=True)]
 
     def get_serializer(self, *args, **kwargs):
         """
-        Dynamically fetch the latest `goal` choices before initializing the serializer.
+        Dynamically fetches the latest `goal` choices before initializing the serializer.
         """
         serializer = CompleteProfileSerializer(*args, **kwargs)
         try:
-            goal_choices = [(goal, goal) for goal in get_latest_goal_choices()]
-            serializer.fields['goal'].choices = goal_choices
+            serializer.fields['goal'].choices = self.get_goal_choices()
         except Exception as e:
             logger.error(f"Error fetching program goals: {e}")
             serializer.fields['goal'].choices = []
         return serializer
+
+    def get_queryset(self):
+        """ Needed for schema generation """
+        return Program.objects.values_list('program_goal', flat=True)
 
     @swagger_auto_schema(
         operation_description="Complete the user profile with additional details",
@@ -425,14 +429,7 @@ class CompleteProfileView(APIView):
                 enum=["Beginner", "Intermediate", "Advanced"],
                 required=True
             ),
-            openapi.Parameter(
-                'goal',
-                openapi.IN_FORM,
-                description="Goal",
-                type=openapi.TYPE_STRING,
-                required=True,
-                enum=get_latest_goal_choices(),  # ✅ This now returns full names, not single letters
-            ),
+            # ❌ Removed `enum` from `goal` here because it was static!
         ],
         responses={200: "Profile completed successfully."}
     )
