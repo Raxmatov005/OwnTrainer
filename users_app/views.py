@@ -355,6 +355,8 @@ class VerifyCodeView(APIView):
 
 
 
+def get_goal_choices():
+    return list(Program.objects.values_list('program_goal', flat=True))
 
 class CompleteProfileView(APIView):
     permission_classes = [IsAuthenticated]
@@ -414,7 +416,7 @@ class CompleteProfileView(APIView):
                 openapi.IN_FORM,
                 description="Goal",
                 type=openapi.TYPE_STRING,
-                enum=goal_choices,
+                enum=get_goal_choices(),
                 required=True
             ),
         ],

@@ -54,7 +54,6 @@ class InitialRegisterSerializer(serializers.ModelSerializer):
 
 
 class CompleteProfileSerializer(serializers.ModelSerializer):
-    print(serializers.fields['goal'].choices)
     goal = serializers.ChoiceField(choices=[], label=_("Goal"), help_text=_("Select your goal"))
 
     class Meta:
@@ -73,13 +72,17 @@ class CompleteProfileSerializer(serializers.ModelSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
-            self.fields['goal'].choices = [
-                (program.program_goal, program.program_goal)
-                for program in Program.objects.all()
-            ]
-        except Exception:
-            self.fields['goal'].choices = []
+            goals = list(Program.objects.values_list('program_goal', flat=True))
+            if goals:
+                self.fields['goal'].choices = [(goal, goal) for goal in goals]
+            else:
+                logger.warning("No program goals found in the database.")
 
+            # ✅ Print correctly for debugging
+            print("Goal Choices:", self.fields['goal'].choices)
+        except Exception as e:
+            logger.error(f"Error fetching program goals: {e}")
+            self.fields['goal'].choices = []
     def validate_goal(self, value):
         valid_goals = Program.objects.values_list('program_goal', flat=True)
         if value not in valid_goals:
