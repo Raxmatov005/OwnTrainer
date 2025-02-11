@@ -59,11 +59,11 @@ eskiz_api = EskizAPI(email=settings.ESKIZ_EMAIL, password=settings.ESKIZ_PASSWOR
 
 
 
-try:
-    goal_choices = [program.program_goal for program in Program.objects.all()]
-except Exception as e:
-    logger.warning(f"Failed to fetch Program model data: {e}")
-    goal_choices = []
+# try:
+#     goal_choices = [program.program_goal for program in Program.objects.all()]
+# except Exception as e:
+#     logger.warning(f"Failed to fetch Program model data: {e}")
+#     goal_choices = []
 
 
 
@@ -355,22 +355,26 @@ class VerifyCodeView(APIView):
 
 
 
-def get_goal_choices():
-    return list(Program.objects.values_list('program_goal', flat=True))
+def get_latest_goal_choices():
+    """ Fetch the latest goal choices as a list of full strings. """
+    return list(Program.objects.values_list('program_goal', flat=True))  # ✅ Fetch full names, not letters
 
 class CompleteProfileView(APIView):
     permission_classes = [IsAuthenticated]
-    parser_classes = [FormParser, MultiPartParser]  # Enable form data parsing
+    parser_classes = [FormParser, MultiPartParser]
 
     def get_serializer(self, *args, **kwargs):
         """
-        This method dynamically fetches the latest `goal` choices before initializing the serializer.
+        Dynamically fetch the latest `goal` choices before initializing the serializer.
         """
-        goal_choices = [(goal, goal) for goal in Program.objects.values_list('program_goal', flat=True)]
         serializer = CompleteProfileSerializer(*args, **kwargs)
-        serializer.fields['goal'].choices = goal_choices
+        try:
+            goal_choices = [(goal, goal) for goal in get_latest_goal_choices()]
+            serializer.fields['goal'].choices = goal_choices
+        except Exception as e:
+            logger.error(f"Error fetching program goals: {e}")
+            serializer.fields['goal'].choices = []
         return serializer
-
 
     @swagger_auto_schema(
         operation_description="Complete the user profile with additional details",
@@ -426,18 +430,17 @@ class CompleteProfileView(APIView):
                 openapi.IN_FORM,
                 description="Goal",
                 type=openapi.TYPE_STRING,
-                enum=[goal[0] for goal in Program.objects.values_list('program_goal', flat=True)],
-                required=True
+                required=True,
+                enum=get_latest_goal_choices(),  # ✅ This now returns full names, not single letters
             ),
         ],
         responses={200: "Profile completed successfully."}
     )
     def patch(self, request):
-        serializer = CompleteProfileSerializer(instance=request.user, data=request.data, partial=True)
+        serializer = self.get_serializer(instance=request.user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             user = request.user
-
 
             if user.goal:
                 program = Program.objects.filter(program_goal=user.goal).first()
@@ -488,6 +491,7 @@ class CompleteProfileView(APIView):
                             )
 
             return Response({"message": _("Profile completed successfully.")}, status=status.HTTP_200_OK)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
