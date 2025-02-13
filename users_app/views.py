@@ -429,7 +429,7 @@ class CompleteProfileView(APIView):
                 enum=["Beginner", "Intermediate", "Advanced"],
                 required=True
             ),
-            # ❌ Removed `enum` from `goal` here because it was static!
+
         ],
         responses={200: "Profile completed successfully."}
     )

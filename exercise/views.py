@@ -18,7 +18,7 @@ from .serializers import SessionSerializer
 from django.utils.dateparse import parse_date
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
-
+from .subscribtion_check import IsSubscriptionActive
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
@@ -559,6 +559,21 @@ class WorkoutCategoryViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
+from datetime import timedelta
+from django.utils import timezone
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+
+from users_app.models import (
+    Program, UserProgram, SessionCompletion,
+    MealCompletion, ExerciseCompletion, translate_text
+)
+from .serializers import UserProgramSerializer
+from .permissions import IsAdminOrReadOnly  # If you have this custom permission
+
+
 class UserProgramViewSet(viewsets.ModelViewSet):
     queryset = UserProgram.objects.all()
     serializer_class = UserProgramSerializer
@@ -572,29 +587,108 @@ class UserProgramViewSet(viewsets.ModelViewSet):
             return UserProgram.objects.none()
         return UserProgram.objects.filter(user=self.request.user)
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("List all user programs for the authenticated user"))
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("List all user programs for the authenticated user")
+    )
     def list(self, request):
         queryset = self.get_queryset().filter(user=request.user)
         serializer = self.get_serializer(queryset, many=True)
         return Response({"user_programs": serializer.data})
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("Retrieve user program by ID"))
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("Retrieve user program by ID")
+    )
     def retrieve(self, request, pk=None):
         user_program = self.get_object()
         serializer = self.get_serializer(user_program)
         return Response({"user_program": serializer.data})
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("Create a new user program"))
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("Create a new user program")
+    )
     def create(self, request):
+        """
+        1) Reads `program_id` from request.data.
+        2) Fetches the matching Program (must be active).
+        3) Uses serializer to create a UserProgram (ties user to program).
+        4) If `is_paid=True`, we automatically create SessionCompletion,
+           MealCompletion, and ExerciseCompletion for all relevant sessions.
+        """
         language = self.get_user_language()
+
+        # 1) program_id is required
+        program_id = request.data.get('program_id')
+        if not program_id:
+            return Response({"error": "program_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 2) Fetch the program
+        try:
+            program = Program.objects.get(id=program_id, is_active=True)
+        except Program.DoesNotExist:
+            return Response({"error": "Invalid or inactive program_id."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 3) Validate and create the UserProgram via serializer
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(user=request.user)
-            message = translate_text("User program created successfully", language)
-            return Response({"message": message, "user_program": serializer.data})
-        return Response(serializer.errors, status=400)
+            user_program = serializer.save(user=request.user, program=program)
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("Update a user program by ID"))
+            # 4) If user_program is paid, create all completions
+            if user_program.is_paid:
+                sessions = program.sessions.order_by('session_number')
+                start_date = timezone.now().date()
+                total_sessions = sessions.count()
+                end_date = start_date + timedelta(days=total_sessions)
+
+                # Update the user_program with start/end dates
+                user_program.start_date = start_date
+                user_program.end_date = end_date
+                user_program.save()
+
+                # Loop sessions
+                for index, session in enumerate(sessions, start=1):
+                    session_date = start_date + timedelta(days=index - 1)
+
+                    # Create SessionCompletion
+                    SessionCompletion.objects.create(
+                        user=request.user,
+                        session=session,
+                        is_completed=False,
+                        session_number_private=session.session_number,
+                        session_date=session_date
+                    )
+
+                    # Create MealCompletion
+                    for meal in session.meals.all():
+                        MealCompletion.objects.create(
+                            user=request.user,
+                            meal=meal,
+                            session=session,
+                            is_completed=False,
+                            meal_date=session_date
+                        )
+
+                    # Create ExerciseCompletion
+                    for exercise in session.exercises.all():
+                        ExerciseCompletion.objects.create(
+                            user=request.user,
+                            exercise=exercise,
+                            session=session,
+                            is_completed=False,
+                            exercise_date=session_date
+                        )
+
+            message = translate_text("User program created successfully", language)
+            return Response({"message": message, "user_program": serializer.data}, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("Update a user program by ID")
+    )
     def update(self, request, pk=None):
         language = self.get_user_language()
         user_program = self.get_object()
@@ -608,7 +702,10 @@ class UserProgramViewSet(viewsets.ModelViewSet):
             return Response({"message": message, "user_program": serializer.data})
         return Response(serializer.errors, status=400)
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("Partially update a user program by ID"))
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("Partially update a user program by ID")
+    )
     def partial_update(self, request, pk=None):
         language = self.get_user_language()
         user_program = self.get_object()
@@ -622,7 +719,10 @@ class UserProgramViewSet(viewsets.ModelViewSet):
             return Response({"message": message, "user_program": serializer.data})
         return Response(serializer.errors, status=400)
 
-    @swagger_auto_schema(tags=['User Programs'], operation_description=_("Delete a user program"))
+    @swagger_auto_schema(
+        tags=['User Programs'],
+        operation_description=_("Delete a user program")
+    )
     def destroy(self, request, pk=None):
         language = self.get_user_language()
         user_program = self.get_object()
@@ -634,24 +734,24 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-class UserProgramAllViewSet(APIView):
-    queryset = UserProgram.objects.all()
-    serializer_class = UserProgramSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
-
-    def get_user_language(self):
-        return getattr(self.request.user, 'language', 'en')
-
-    def get_queryset(self):
-        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
-            return UserProgram.objects.none()
-        return UserProgram.objects.all()
-
-    @swagger_auto_schema(tags=['User Programs All'], operation_description=_("List all user programs for the authenticated user"))
-    def list(self, request):
-        queryset = self.get_queryset().filter(user=request.user)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({"user_programs": serializer.data})
+# class UserProgramAllViewSet(APIView):
+#     queryset = UserProgram.objects.all()
+#     serializer_class = UserProgramSerializer
+#     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+#
+#     def get_user_language(self):
+#         return getattr(self.request.user, 'language', 'en')
+#
+#     def get_queryset(self):
+#         if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+#             return UserProgram.objects.none()
+#         return UserProgram.objects.all()
+#
+#     @swagger_auto_schema(tags=['User Programs All'], operation_description=_("List all user programs for the authenticated user"))
+#     def list(self, request):
+#         queryset = self.get_queryset().filter(user=request.user)
+#         serializer = self.get_serializer(queryset, many=True)
+#         return Response({"user_programs": serializer.data})
 
 
 class UserFullProgramDetailView(APIView):

@@ -144,31 +144,98 @@ class Program(models.Model):
             self.is_active = False
             self.save()
 
+# users_app/models.py
+
+from django.db import models
+from django.utils import timezone
+from django.core.validators import MinValueValidator, MaxValueValidator
+# Ensure you import your other models if you need them
+# from users_app.models import SessionCompletion, Program, User (adjust as needed)
 
 class UserProgram(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_programs", null=True)
-    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name="user_programs", null=True)
+    user = models.ForeignKey(
+        'User',
+        on_delete=models.CASCADE,
+        related_name="user_programs",
+        null=True
+    )
+    program = models.ForeignKey(
+        'Program',
+        on_delete=models.CASCADE,
+        related_name="user_programs",
+        null=True
+    )
+
+    # Your original approach: automatically set the date when created
     start_date = models.DateField(auto_now_add=True)
+
     end_date = models.DateField(null=True, blank=True)
     progress = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
+
+    # Payment-related fields
     amount = models.IntegerField(blank=True, null=True)
     is_paid = models.BooleanField(default=False)
-    payment_method = models.CharField(max_length=255)
 
+    # Make payment_method nullable/blank if you want
+    payment_method = models.CharField(max_length=255, blank=True, null=True)
+
+    # --- NEW SUBSCRIPTION FIELDS ---
+    SUBSCRIPTION_CHOICES = [
+        ('month', 'Monthly'),
+        ('quarter', '3-Month'),
+        ('year', 'Yearly'),
+    ]
+    # We allow blank=True, null=True so user_program can exist without subscription
+    subscription_type = models.CharField(
+        max_length=20,
+        choices=SUBSCRIPTION_CHOICES,
+        default='month',
+        blank=True,
+        null=True
+    )
+    # --------------------------------
 
     def calculate_progress(self):
+        """
+        Calculates how many sessions are completed vs total sessions in self.program.
+        """
+        from users_app.models import SessionCompletion  # import inside method to avoid circular imports
+        if not self.program:
+            return 0
+
         total_sessions = self.program.total_sessions
         completed_sessions = SessionCompletion.objects.filter(
             user=self.user,
             session__program=self.program,
             is_completed=True
         ).count()
-        return (completed_sessions / total_sessions) * 100 if total_sessions > 0 else 0
+
+        if total_sessions > 0:
+            return (completed_sessions / total_sessions) * 100
+        return 0
+
+    def is_subscription_active(self):
+        """
+        Returns True if user has paid and today's date <= self.end_date.
+        Only relevant if using subscription logic (month/quarter/year).
+        """
+        if not self.is_paid:
+            return False
+        if not self.end_date:
+            return False
+        return timezone.now().date() <= self.end_date
 
     def __str__(self):
-        program_goal = self.program.program_goal if self.program else "No Program"
-        return f"{self.user} - {program_goal}"
+        """
+        Combined display: e.g. "john@example.com - Weight Loss (Paid=True)"
+        """
+        if self.program:
+            program_goal = self.program.program_goal
+        else:
+            program_goal = "No Program"
+
+        return f"{self.user} - {program_goal} (Paid={self.is_paid})"
 
 
 class WorkoutCategory(models.Model):
