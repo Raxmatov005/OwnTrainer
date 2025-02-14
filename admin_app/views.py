@@ -103,15 +103,14 @@ class AdminGetAllUsersView(ListAPIView):
     pagination_class = AdminPageNumberPagination
     serializer_class = UserSerializer  # 🔹 You need a `UserSerializer`
 
+from admin_app.serializers import AdminLoginSerializer  # ✅ Ensure this is correctly imported
 
-### **🔹 Admin Login View (Restrict to Admin Only)**
-from admin_app.serializers import AdminLoginSerializer  # ✅ Import the serializer
-
-class AdminLoginView(APIView):
+class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIView
     permission_classes = [AllowAny]
+    serializer_class = AdminLoginSerializer  # ✅ Explicitly define the serializer
 
     def post(self, request):
-        serializer = AdminLoginSerializer(data=request.data)  # ✅ Validate request data
+        serializer = self.get_serializer(data=request.data)  # ✅ Use DRF's serializer handling
         if not serializer.is_valid():
             return Response(serializer.errors, status=400)
 
@@ -132,7 +131,6 @@ class AdminLoginView(APIView):
         # Generate Auth Token for the Admin
         token, created = Token.objects.get_or_create(user=user)
         return Response({"token": token.key, "message": "Admin login successful!"}, status=200)
-
 
 
 ### **🔹 Admin Content Management (Paginated)**
