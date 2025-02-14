@@ -281,3 +281,13 @@ class ReminderTimeSerializer(serializers.Serializer):
             return value
         except ValueError:
             raise serializers.ValidationError("Invalid time format. Use 'HH:MM' format.")
+
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'email_or_phone', 'phone_or_email_optional', 'gender',
+            'country', 'age', 'height', 'weight', 'goal', 'level',
+            'is_premium', 'photo', 'language', 'date_joined', 'is_active', 'last_login'
+        ]

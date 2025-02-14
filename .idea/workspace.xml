@@ -5,14 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
-      <change afterPath="$PROJECT_DIR$/admin_app/pagination.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/admin_app/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/admin_app/urls.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/admin_app/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/admin_app/views.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exercise/subscribtion_check.py" beforeDir="false" afterPath="$PROJECT_DIR$/exercise/subscribtion_check.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exercise/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/exercise/views.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/food/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/food/views.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/users_app/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/users_app/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/users_app/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/users_app/serializers.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -186,7 +180,7 @@
       <workItem from="1739441249453" duration="3256000" />
       <workItem from="1739465179416" duration="6622000" />
       <workItem from="1739530495544" duration="3455000" />
-      <workItem from="1739550894573" duration="4472000" />
+      <workItem from="1739550894573" duration="5524000" />
     </task>
     <task id="LOCAL-00001" summary=".">
       <option name="closed" value="true" />
@@ -356,7 +350,15 @@
       <option name="project" value="LOCAL" />
       <updated>1739273928524</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary=".">
+      <option name="closed" value="true" />
+      <created>1739557733957</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1739557733957</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

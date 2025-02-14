@@ -13,7 +13,7 @@ from users_app.models import User, UserProgram, SessionCompletion, Session, Meal
 from food.serializers import MealSerializer
 from exercise.serializers import ExerciseSerializer
 from .pagination import AdminPageNumberPagination
-
+from users_app.serializers import UserSerializer
 
 ### **🔹 Admin Statistics View (Dashboard)**
 class AdminUserStatisticsView(APIView):
