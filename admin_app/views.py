@@ -104,12 +104,18 @@ class AdminGetAllUsersView(ListAPIView):
 
 
 ### **🔹 Admin Login View (Restrict to Admin Only)**
+from admin_app.serializers import AdminLoginSerializer  # ✅ Import the serializer
+
 class AdminLoginView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        email_or_phone = request.data.get("email_or_phone")
-        password = request.data.get("password")
+        serializer = AdminLoginSerializer(data=request.data)  # ✅ Validate request data
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        email_or_phone = serializer.validated_data["email_or_phone"]
+        password = serializer.validated_data["password"]
 
         try:
             user = User.objects.get(email_or_phone=email_or_phone)
@@ -125,6 +131,7 @@ class AdminLoginView(APIView):
         # Generate Auth Token for the Admin
         token, created = Token.objects.get_or_create(user=user)
         return Response({"token": token.key, "message": "Admin login successful!"}, status=200)
+
 
 
 ### **🔹 Admin Content Management (Paginated)**
