@@ -1,92 +1,172 @@
 from django.shortcuts import render
-
-# Create your views here.
 from django.utils.timezone import now, timedelta
-from rest_framework.views import APIView
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
-from users_app.models import User
-from django.db.models import Q
-from rest_framework import status  # status import qilingan
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
+from django.db.models import Count, Sum, Q
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import authenticate
+from users_app.models import User, UserProgram, SessionCompletion, Session, Meal, Exercise
+from food.serializers import MealSerializer
+from exercise.serializers import ExerciseSerializer
+from .pagination import AdminPageNumberPagination
 
 
-
+### **🔹 Admin Statistics View (Dashboard)**
 class AdminUserStatisticsView(APIView):
-    # permission_classes = [IsAdminUser]  # Faqat adminlar uchun
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
-        # Umumiy foydalanuvchilar soni
-        total_users = User.objects.count()
+        today = now().date()
+        seven_days_ago = today - timedelta(days=7)
+        one_month_ago = today - timedelta(days=30)
 
-        # Premium foydalanuvchilar soni
+        ### **TOP SECTION - Overall Statistics (3 UI Cells)**
+        total_users = User.objects.count()
+        users_today = User.objects.filter(date_joined__date=today).count()
         premium_users = User.objects.filter(is_premium=True).count()
         non_premium_users = User.objects.filter(is_premium=False).count()
 
-        # Faol foydalanuvchilar (is_active=True)
-        active_users = User.objects.filter(is_active=True).count()
-        inactive_users = User.objects.filter(is_active=False).count()
+        total_exercises = Exercise.objects.count()
+        total_meals = Meal.objects.count()
 
-        # Oxirgi 7 kun ichida ro'yxatdan o'tgan foydalanuvchilar
-        seven_days_ago = now() - timedelta(days=7)
         registered_last_7_days = User.objects.filter(date_joined__gte=seven_days_ago).count()
-
-        # Oxirgi 1 oyda ro'yxatdan o'tgan foydalanuvchilar
-        one_month_ago = now() - timedelta(days=30)
         registered_last_month = User.objects.filter(date_joined__gte=one_month_ago).count()
 
-        # Oxirgi 7 kun ichida tizimdan chiqqan foydalanuvchilar
-        logged_out_last_7_days = User.objects.filter(
-            Q(is_active=False) & Q(last_login__gte=seven_days_ago)
-        ).count()
+        active_subscriptions = UserProgram.objects.filter(is_paid=True, is_active=True).count()
+        inactive_subscriptions = UserProgram.objects.filter(is_paid=False).count()
 
-        # Oxirgi 1 oyda tizimdan chiqqan foydalanuvchilar
-        logged_out_last_month = User.objects.filter(
-            Q(is_active=False) & Q(last_login__gte=one_month_ago)
-        ).count()
+        total_income = UserProgram.objects.filter(is_paid=True).aggregate(total_income=Sum('amount'))
+        total_income = total_income["total_income"] if total_income["total_income"] is not None else 0
 
-        # Statistika javobi
-        data = {
+        top_section_data = {
+            "users_today": users_today,
             "total_users": total_users,
             "premium_users": premium_users,
             "non_premium_users": non_premium_users,
-            "active_users": active_users,
-            "inactive_users": inactive_users,
+            "total_exercises": total_exercises,
+            "total_meals": total_meals,
             "registered_last_7_days": registered_last_7_days,
             "registered_last_month": registered_last_month,
-            "logged_out_last_7_days": logged_out_last_7_days,
-            "logged_out_last_month": logged_out_last_month,
+            "active_subscriptions": active_subscriptions,
+            "inactive_subscriptions": inactive_subscriptions,
+            "total_income": total_income,
         }
 
-        return Response(data, status=200)
+        ### **BOTTOM SECTION - Grouped by Country**
+        countries_data = (
+            User.objects.values("country")
+            .annotate(
+                total_users=Count("id"),
+                subscribers=Count("id", filter=Q(is_premium=True)),
+                non_subscribers=Count("id", filter=Q(is_premium=False)),
+                active_users=Count("id", filter=Q(is_active=True)),
+                inactive_users=Count("id", filter=Q(is_active=False)),
+                active_subscriptions=Count("user_programs", filter=Q(user_programs__is_paid=True, user_programs__is_active=True)),
+                inactive_subscriptions=Count("user_programs", filter=Q(user_programs__is_paid=False)),
+                income=Sum("user_programs__amount", filter=Q(user_programs__is_paid=True)),
+            )
+        )
 
-
-
-class AdminGetAllUsersView(APIView):
-    # permission_classes = [IsAdminUser]  # Faqat adminlar kirishi mumkin
-
-    def get(self, request):
-        # Barcha foydalanuvchilarni olish
-        users = User.objects.all()
-        users_data = [
+        bottom_section_data = [
             {
-                "id": user.id,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "email_or_phone": user.email_or_phone,
-                "gender": user.gender,
-                "country": user.country,
-                "age": user.age,
-                "height": user.height,
-                "weight": user.weight,
-                "goal": user.goal,
-                "level": user.level,
-                "is_premium": user.is_premium,
-                "language": user.language,
-                "is_active": user.is_active,
-                "date_joined": user.date_joined,
-                "last_login": user.last_login,
+                "country": country["country"],
+                "total_users": country["total_users"],
+                "subscribers": country["subscribers"],
+                "non_subscribers": country["non_subscribers"],
+                "active_users": country["active_users"],
+                "inactive_users": country["inactive_users"],
+                "active_subscriptions": country["active_subscriptions"],
+                "inactive_subscriptions": country["inactive_subscriptions"],
+                "income": country["income"] or 0,
             }
-            for user in users
+            for country in countries_data
         ]
 
-        return Response(users_data, status=status.HTTP_200_OK)  # status ishlatiladi
+        return Response(
+            {
+                "top_section": top_section_data,
+                "bottom_section": bottom_section_data,
+            },
+            status=200,
+        )
+
+
+### **🔹 Admin User Management (Paginated User List)**
+class AdminGetAllUsersView(ListAPIView):
+    permission_classes = [IsAdminUser]
+    queryset = User.objects.all()
+    pagination_class = AdminPageNumberPagination
+    serializer_class = UserSerializer  # 🔹 You need a `UserSerializer`
+
+
+### **🔹 Admin Login View (Restrict to Admin Only)**
+class AdminLoginView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        email_or_phone = request.data.get("email_or_phone")
+        password = request.data.get("password")
+
+        try:
+            user = User.objects.get(email_or_phone=email_or_phone)
+        except User.DoesNotExist:
+            return Response({"error": "Invalid credentials"}, status=400)
+
+        if not user.check_password(password):
+            return Response({"error": "Invalid credentials"}, status=400)
+
+        if not user.is_staff:
+            return Response({"error": "Access denied. Only admins can log in."}, status=403)
+
+        # Generate Auth Token for the Admin
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key, "message": "Admin login successful!"}, status=200)
+
+
+### **🔹 Admin Content Management (Paginated)**
+class AdminContentViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminUser]
+    pagination_class = AdminPageNumberPagination
+
+    def get_queryset(self, content_type):
+        if content_type == "exercises":
+            return Exercise.objects.all()
+        elif content_type == "meals":
+            return Meal.objects.all()
+        return Exercise.objects.none()
+
+    @action(detail=False, methods=['get'], url_path='exercises')
+    def list_exercises(self, request):
+        queryset = self.get_queryset("exercises")
+        paginator = self.pagination_class()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        serializer = ExerciseSerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='meals')
+    def list_meals(self, request):
+        queryset = self.get_queryset("meals")
+        paginator = self.pagination_class()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        serializer = MealSerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='all')
+    def list_all_content(self, request):
+        queryset_exercises = Exercise.objects.all()
+        queryset_meals = Meal.objects.all()
+        paginator = self.pagination_class()
+
+        paginated_exercises = paginator.paginate_queryset(queryset_exercises, request)
+        paginated_meals = paginator.paginate_queryset(queryset_meals, request)
+
+        response_data = {
+            "exercises": ExerciseSerializer(paginated_exercises, many=True).data,
+            "meals": MealSerializer(paginated_meals, many=True).data
+        }
+
+        return paginator.get_paginated_response(response_data)

@@ -59,6 +59,14 @@ class MealViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_authenticated:
             raise PermissionDenied("Authentication is required to view meals.")
 
+        user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
+        if not user_program:
+            return Meal.objects.none()
+
+        # ADD SUBSCRIPTION CHECK HERE
+        if not user_program.is_subscription_active():
+            return Meal.objects.none()
+
         # Foydalanuvchi administrator bo'lmagan holatda faqat o'ziga tegishli meallarni ko'rsatamiz
         if not self.request.user.is_staff:
             sessions = SessionCompletion.objects.filter(user=self.request.user).values_list('session_id', flat=True)
@@ -148,6 +156,11 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
             session = serializer.validated_data.get('session')  # Extract session
             meal = serializer.validated_data.get('meal')  # Extract meal
             user = request.user
+
+
+            user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+            if not user_program or not user_program.is_subscription_active():
+                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
             # Ensure the session and meal are valid
             if not Session.objects.filter(id=session.id).exists():
@@ -440,6 +453,10 @@ class CompleteMealView(APIView):
             session_id = serializer.validated_data.get('session_id')
             meal_id = serializer.validated_data.get('meal_id')
 
+            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+            if not user_program or not user_program.is_subscription_active():
+                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+
             # MealCompletion obyektini topish
             meal_completion = MealCompletion.objects.filter(
                 session_id=session_id,
@@ -469,6 +486,10 @@ class UserDailyMealsView(APIView):
     def get(self, request):
         today = localdate()  # Bugungi sana olish
         user = request.user
+
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program or not user_program.is_subscription_active():
+            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
         # Bugungi sessiyalarni olish
         user_sessions = SessionCompletion.objects.filter(

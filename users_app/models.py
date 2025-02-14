@@ -216,15 +216,15 @@ class UserProgram(models.Model):
         return 0
 
     def is_subscription_active(self):
-        """
-        Returns True if user has paid and today's date <= self.end_date.
-        Only relevant if using subscription logic (month/quarter/year).
-        """
-        if not self.is_paid:
+        if not self.is_paid or not self.end_date:
+            return False  # No valid subscription
+
+        if self.end_date < timezone.now().date():
+            self.is_paid = False  # Mark as unpaid
+            self.save()
             return False
-        if not self.end_date:
-            return False
-        return timezone.now().date() <= self.end_date
+
+        return True
 
     def __str__(self):
         """

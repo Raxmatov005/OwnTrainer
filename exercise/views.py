@@ -253,6 +253,8 @@ class SessionViewSet(viewsets.ModelViewSet):
                     {"error": _("No active program found for the user.")},
                     status=status.HTTP_404_NOT_FOUND
                 )
+            if not user_program.is_subscription_active():
+                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
             # Find all incomplete SessionCompletion for this program
             incomplete_sc = SessionCompletion.objects.filter(
@@ -630,6 +632,10 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         except Program.DoesNotExist:
             return Response({"error": "Invalid or inactive program_id."}, status=status.HTTP_404_NOT_FOUND)
 
+        user_program = UserProgram.objects.filter(user=request.user, program=program).first()
+        if user_program and not user_program.is_subscription_active():
+            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+
         # 3) Validate and create the UserProgram via serializer
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
@@ -733,27 +739,6 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         message = translate_text("User program deleted successfully", language)
         return Response({"message": message})
 
-
-# class UserProgramAllViewSet(APIView):
-#     queryset = UserProgram.objects.all()
-#     serializer_class = UserProgramSerializer
-#     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
-#
-#     def get_user_language(self):
-#         return getattr(self.request.user, 'language', 'en')
-#
-#     def get_queryset(self):
-#         if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
-#             return UserProgram.objects.none()
-#         return UserProgram.objects.all()
-#
-#     @swagger_auto_schema(tags=['User Programs All'], operation_description=_("List all user programs for the authenticated user"))
-#     def list(self, request):
-#         queryset = self.get_queryset().filter(user=request.user)
-#         serializer = self.get_serializer(queryset, many=True)
-#         return Response({"user_programs": serializer.data})
-
-
 class UserFullProgramDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -766,6 +751,9 @@ class UserFullProgramDetailView(APIView):
                     {"error": "Foydalanuvchining faol dasturi topilmadi."},
                     status=status.HTTP_404_NOT_FOUND
                 )
+
+            if not user_program.is_subscription_active():
+                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
             # Fetch all sessions for the program
             sessions = Session.objects.filter(program=user_program.program).prefetch_related(
@@ -877,6 +865,10 @@ class StartSessionView(APIView):
 
         if not session_completion:
             return Response({"error": _("Session not found or not assigned to user.")}, status=404)
+
+        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+        if user_program and not user_program.is_subscription_active():
+            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
         if session_completion.is_completed:
             return Response({"error": _("Session already completed.")}, status=400)
@@ -1153,6 +1145,12 @@ class ExerciseStartView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = ExerciseStartSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
+            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+
+            # ADD SUBSCRIPTION CHECK HERE
+            if user_program and not user_program.is_subscription_active():
+                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+
             data = serializer.save()
             return Response(data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

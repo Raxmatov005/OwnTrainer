@@ -11,7 +11,7 @@ class IsSubscriptionActive(BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        user_program = UserProgram.objects.filter(user=request.user).first()
+        user_program = UserProgram.objects.filter(user=request.user, is_paid=True).first()
         if not user_program:
             return False
 
