@@ -25,6 +25,8 @@ DB_HOST = os.getenv('DB_HOST')
 DB_PORT = os.getenv('DB_PORT')
 
 
+ALLOWED_HOSTS = ['*']
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 

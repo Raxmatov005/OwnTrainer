@@ -25,4 +25,7 @@ COPY .env .env
 EXPOSE 8000
 
 # Run migrations and start Gunicorn
-CMD ["sh", "-c", "python manage.py makemigrations --noinput && python manage.py migrate --noinput && gunicorn --workers=5 --timeout=60 --bind 0.0.0.0:8000 register.wsgi:application"]
+CMD ["sh", "-c", "gunicorn --workers=5 --timeout=60 --bind 0.0.0.0:8000 register.wsgi:application"]
+
+
+# python manage.py makemigrations --noinput && python manage.py migrate --noinput &&
