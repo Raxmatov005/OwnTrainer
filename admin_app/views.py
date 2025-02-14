@@ -15,6 +15,7 @@ from exercise.serializers import ExerciseSerializer
 from .pagination import AdminPageNumberPagination
 from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
+from rest_framework.generics import GenericAPIView  # ✅ Add this import
 
 ### **🔹 Admin Statistics View (Dashboard)**
 class AdminUserStatisticsView(APIView):
