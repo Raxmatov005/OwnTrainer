@@ -14,6 +14,7 @@ from food.serializers import MealSerializer
 from exercise.serializers import ExerciseSerializer
 from .pagination import AdminPageNumberPagination
 from users_app.serializers import UserSerializer
+from rest_framework.permissions import AllowAny  # ✅ Add this line
 
 ### **🔹 Admin Statistics View (Dashboard)**
 class AdminUserStatisticsView(APIView):
