@@ -95,14 +95,15 @@ REST_FRAMEWORK = {
 
 }
 
+CORS_ALLOW_ALL_ORIGINS = True
 
 
-CORS_ALLOWED_ORIGINS = [
-    "https://owntrainer.uz",
-    "http://owntrainer.uz",
-
-
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "https://owntrainer.uz",
+#     "http://owntrainer.uz",
+#
+#
+# ]
 
 
 

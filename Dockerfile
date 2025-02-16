@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y iputils-ping telnet && apt-get clean
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN pip install django-cors-headers
 # Copy project files into the container
 COPY . .
 
