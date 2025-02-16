@@ -17,6 +17,12 @@ from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
 from rest_framework.generics import GenericAPIView  # ✅ Add this import
 
+
+from admin_app.serializers import AdminLoginSerializer  # ✅ Ensure this is correctly imported
+
+from rest_framework_simplejwt.tokens import RefreshToken  # ✅ Import JWT token generator
+from admin_app.serializers import AdminLoginSerializer  # Ensure this is correctly imported
+
 ### **🔹 Admin Statistics View (Dashboard)**
 class AdminUserStatisticsView(APIView):
     permission_classes = [IsAdminUser]
@@ -104,7 +110,7 @@ class AdminGetAllUsersView(ListAPIView):
     pagination_class = AdminPageNumberPagination
     serializer_class = UserSerializer  # 🔹 You need a `UserSerializer`
 
-from admin_app.serializers import AdminLoginSerializer  # ✅ Ensure this is correctly imported
+
 
 class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIView
     permission_classes = [AllowAny]
@@ -118,8 +124,9 @@ class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIVi
         email_or_phone = serializer.validated_data["email_or_phone"]
         password = serializer.validated_data["password"]
 
+        # ✅ Check if user exists using either email or phone
         try:
-            user = User.objects.get(email_or_phone=email_or_phone)
+            user = User.objects.get(Q(email=email_or_phone) | Q(phone=email_or_phone))
         except User.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=400)
 
@@ -129,9 +136,16 @@ class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIVi
         if not user.is_staff:
             return Response({"error": "Access denied. Only admins can log in."}, status=403)
 
-        # Generate Auth Token for the Admin
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({"token": token.key, "message": "Admin login successful!"}, status=200)
+        # ✅ Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+
+        return Response({
+            "access": access_token,
+            "refresh": str(refresh),
+            "message": "Admin login successful!"
+        }, status=200)
+
 
 
 ### **🔹 Admin Content Management (Paginated)**
