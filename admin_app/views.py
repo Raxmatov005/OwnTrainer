@@ -126,7 +126,7 @@ class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIVi
 
         # ✅ Check if user exists using either email or phone
         try:
-            user = User.objects.get(Q(email=email_or_phone) | Q(phone=email_or_phone))
+            user = User.objects.get(email_or_phone=email_or_phone)
         except User.DoesNotExist:
             return Response({"error": "Invalid credentials"}, status=400)
 
