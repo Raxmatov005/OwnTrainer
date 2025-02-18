@@ -579,7 +579,7 @@ from .permissions import IsAdminOrReadOnly  # If you have this custom permission
 class UserProgramViewSet(viewsets.ModelViewSet):
     queryset = UserProgram.objects.all()
     serializer_class = UserProgramSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get_user_language(self):
         return getattr(self.request.user, 'language', 'en')
