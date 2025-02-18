@@ -625,9 +625,9 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         except Program.DoesNotExist:
             return Response({"error": "Invalid or inactive program_id."}, status=status.HTTP_404_NOT_FOUND)
 
-        user_program = UserProgram.objects.filter(user=request.user, program=program).first()
-        if user_program and not user_program.is_subscription_active():
-            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+        # user_program = UserProgram.objects.filter(user=request.user, program=program).first()
+        # if user_program and not user_program.is_subscription_active():
+        #     return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
         # Use a different serializer
         create_serializer = UserProgramCreateSerializer(data=request.data)
