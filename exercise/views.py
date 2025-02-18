@@ -253,8 +253,8 @@ class SessionViewSet(viewsets.ModelViewSet):
                     {"error": _("No active program found for the user.")},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            if not user_program.is_subscription_active():
-                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+            # if not user_program.is_subscription_active():
+            #     return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
             # Find all incomplete SessionCompletion for this program
             incomplete_sc = SessionCompletion.objects.filter(
