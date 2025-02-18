@@ -616,7 +616,7 @@ class UserProgramViewSet(viewsets.ModelViewSet):
     def create(self, request):
         language = self.get_user_language()
 
-        program_id = request.data.get("program_id")
+        program_id = request.data.get("program")
         if not program_id:
             return Response({"error": "program_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
