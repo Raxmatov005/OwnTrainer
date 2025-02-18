@@ -609,7 +609,9 @@ class UserProgramViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['User Programs'],
-        operation_description=_("Create a new user program")
+        operation_description=_("Create a new user program"),
+        request_body=UserProgramCreateSerializer,  # Explicitly specify the correct serializer
+        responses={201: openapi.Response(description="User program created", schema=UserProgramSerializer)}
     )
     def create(self, request):
         language = self.get_user_language()

@@ -143,6 +143,8 @@ class UserProgramCreateSerializer(serializers.ModelSerializer):
         model = UserProgram
         fields = ['program']
         extra_kwargs = {'program': {'label': _("Program")}}
+
+
 class UserProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProgram
