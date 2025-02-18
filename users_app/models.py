@@ -322,7 +322,7 @@ class Exercise(models.Model):
     description_en = models.TextField(blank=True, null=True)
 
     difficulty_level = models.CharField(max_length=50)  # E.g., Beginner, Intermediate, Advanced
-    target_muscle = models.CharField(max_length=255)
+    target_muscle = models.CharField(max_length=255, blank=True, null=True)
     target_muscle_uz = models.CharField(max_length=255, blank=True, null=True)
     target_muscle_ru = models.CharField(max_length=255, blank=True, null=True)
     target_muscle_en = models.CharField(max_length=255, blank=True, null=True)

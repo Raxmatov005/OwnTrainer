@@ -612,21 +612,12 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         operation_description=_("Create a new user program")
     )
     def create(self, request):
-        """
-        1) Reads `program_id` from request.data.
-        2) Fetches the matching Program (must be active).
-        3) Uses serializer to create a UserProgram (ties user to program).
-        4) If `is_paid=True`, we automatically create SessionCompletion,
-           MealCompletion, and ExerciseCompletion for all relevant sessions.
-        """
         language = self.get_user_language()
 
-        # 1) program_id is required
-        program_id = request.data.get('program_id')
+        program_id = request.data.get("program_id")
         if not program_id:
             return Response({"error": "program_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2) Fetch the program
         try:
             program = Program.objects.get(id=program_id, is_active=True)
         except Program.DoesNotExist:
@@ -636,60 +627,55 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         if user_program and not user_program.is_subscription_active():
             return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
-        # 3) Validate and create the UserProgram via serializer
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            user_program = serializer.save(user=request.user, program=program)
+        # Use a different serializer
+        create_serializer = UserProgramCreateSerializer(data=request.data)
+        if create_serializer.is_valid():
+            user_program = create_serializer.save(user=request.user, program=program)
 
-            # 4) If user_program is paid, create all completions
             if user_program.is_paid:
-                sessions = program.sessions.order_by('session_number')
+                sessions = program.sessions.order_by("session_number")
                 start_date = timezone.now().date()
                 total_sessions = sessions.count()
                 end_date = start_date + timedelta(days=total_sessions)
 
-                # Update the user_program with start/end dates
                 user_program.start_date = start_date
                 user_program.end_date = end_date
                 user_program.save()
 
-                # Loop sessions
                 for index, session in enumerate(sessions, start=1):
                     session_date = start_date + timedelta(days=index - 1)
 
-                    # Create SessionCompletion
                     SessionCompletion.objects.create(
                         user=request.user,
                         session=session,
                         is_completed=False,
                         session_number_private=session.session_number,
-                        session_date=session_date
+                        session_date=session_date,
                     )
 
-                    # Create MealCompletion
                     for meal in session.meals.all():
                         MealCompletion.objects.create(
                             user=request.user,
                             meal=meal,
                             session=session,
                             is_completed=False,
-                            meal_date=session_date
+                            meal_date=session_date,
                         )
 
-                    # Create ExerciseCompletion
                     for exercise in session.exercises.all():
                         ExerciseCompletion.objects.create(
                             user=request.user,
                             exercise=exercise,
                             session=session,
                             is_completed=False,
-                            exercise_date=session_date
+                            exercise_date=session_date,
                         )
 
             message = translate_text("User program created successfully", language)
-            return Response({"message": message, "user_program": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response({"message": message, "user_program": create_serializer.data},
+                            status=status.HTTP_201_CREATED)
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         tags=['User Programs'],

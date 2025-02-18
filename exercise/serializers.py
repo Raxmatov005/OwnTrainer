@@ -79,7 +79,7 @@ class ExerciseSerializer(serializers.ModelSerializer):
         model = Exercise
         fields = [
             'id', 'category', 'name', 'description', 'exercise_time', 'difficulty_level',
-            'video_url', 'target_muscle', 'created_at', 'updated_at'
+            'video_url', 'created_at', 'updated_at'
         ]
         extra_kwargs = {
             'name': {'label': _("Exercise Name")},
@@ -87,7 +87,6 @@ class ExerciseSerializer(serializers.ModelSerializer):
             'exercise_time': {'label': _("Exercise Time")},
             'difficulty_level': {'label': _("Difficulty Level")},
             'video_url': {'label': _("Video URL")},
-            'target_muscle': {'label': _("Target Muscle")},
             'created_at': {'label': _("Created At")},
             'updated_at': {'label': _("Updated At")},
         }
@@ -98,7 +97,6 @@ class ExerciseSerializer(serializers.ModelSerializer):
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
         data['difficulty_level'] = translate_field(instance, 'difficulty_level', language)
-        data['target_muscle'] = translate_field(instance, 'target_muscle', language)
         return data
 
 
@@ -139,10 +137,16 @@ class UserProgressSerializer(serializers.ModelSerializer):
         }
 
 
+class UserProgramCreateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = UserProgram
+        fields = ['program']
+        extra_kwargs = {'program': {'label': _("Program")}}
 class UserProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProgram
-        fields = ['id', 'user', 'program', 'start_date', 'end_date', 'progress', 'is_active']
+        fields = ['id', 'user', 'program', 'start_date', 'end_date', 'progress', 'is_active', 'is_paid']
         extra_kwargs = {
             'user': {'read_only': True, 'label': _("User")},
             'program': {'label': _("Program")},
@@ -150,19 +154,16 @@ class UserProgramSerializer(serializers.ModelSerializer):
             'end_date': {'label': _("End Date")},
             'progress': {'label': _("Progress")},
             'is_active': {'label': _("Is Active")},
+            'is_paid': {'label': _("Is Paid")},
         }
 
-    def validate_program(self, value):
-        user_goal = self.context['request'].user.goal
-        if not value.is_active:
-            raise serializers.ValidationError(_("Selected program is not relevant or is inactive."))
-        return value
+
 
 
 class UserProgramAllSerializer(serializers.ModelSerializer):
     class Meta:
         model=UserProgram
-        fields=['id','user','program','start_date','end_date','progress','is_active']
+        fields=['id','user','program','start_date','end_date','progress','is_active', 'is_paid']
 
 
 class UserUpdateProgressSerializer(serializers.Serializer):

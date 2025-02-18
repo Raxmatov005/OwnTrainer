@@ -437,57 +437,7 @@ class CompleteProfileView(APIView):
         serializer = self.get_serializer(instance=request.user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            user = request.user
-
-            if user.goal:
-                program = Program.objects.filter(program_goal=user.goal).first()
-                if program:
-                    start_date = datetime.now().date()
-                    total_sessions = program.sessions.count()
-                    end_date = start_date + timedelta(days=total_sessions)
-
-                    user_program = UserProgram.objects.create(
-                        user=user,
-                        program=program,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-
-                    sessions = program.sessions.order_by('session_number')
-                    for index, session in enumerate(sessions, start=1):
-                        session_date = start_date + timedelta(days=index - 1)
-
-                        # Create MealCompletion
-                        for meal in session.meals.all():
-                            MealCompletion.objects.create(
-                                user=user,
-                                meal=meal,
-                                session=session,
-                                is_completed=False,
-                                meal_date=session_date,
-                                completion_date=None,
-                            )
-
-                        # Create SessionCompletion
-                        SessionCompletion.objects.create(
-                            user=user,
-                            session=session,
-                            is_completed=False,
-                            session_number_private=session.session_number,
-                            session_date=session_date
-                        )
-
-                        # Create ExerciseCompletion
-                        for exercise in session.exercises.all():
-                            ExerciseCompletion.objects.create(
-                                user=user,
-                                exercise=exercise,
-                                session=session,
-                                is_completed=False,
-                                exercise_date=session_date
-                            )
-
-            return Response({"message": _("Profile completed successfully.")}, status=status.HTTP_200_OK)
+            return Response({"message": _("Profile updated successfully.")}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

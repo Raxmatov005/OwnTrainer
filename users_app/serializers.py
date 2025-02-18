@@ -200,7 +200,7 @@ class ResetPasswordSerializer(serializers.Serializer):
 class ExerciseFullSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'description', 'difficulty_level', 'calories_burned', 'target_muscle']
+        fields = ['id', 'name', 'description', 'difficulty_level', 'calories_burned']
 
 
 class MealFullSerializer(serializers.ModelSerializer):
