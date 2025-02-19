@@ -12,7 +12,8 @@ from .views import (
     UpdateLanguageView22,
     SetReminderTimeView,
     UserProfileView,
-    OrderCreate
+    OrderCreate,
+    SubscriptionOptionsAPIView
 )
 
 urlpatterns = [
@@ -29,4 +30,5 @@ urlpatterns = [
     path("profile/", UserProfileView.as_view(), name="user_profile"),
     path("api/programs/language2", ProgramLanguageView22.as_view(), name="programs"),
     path("api/user/language2", UpdateLanguageView22.as_view(), name="update_language"),
+    path("options/", SubscriptionOptionsAPIView.as_view(), name="subscription-options"),
 ]

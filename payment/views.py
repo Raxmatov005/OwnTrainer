@@ -3,11 +3,11 @@
 from payme.types import response
 from payme.views import PaymeWebHookAPIView
 from payme.models import PaymeTransactions
-from users_app.models import UserProgram
+from users_app.models import UserProgram, UserSubscription
 from django.utils import timezone
 from datetime import timedelta
 
-# Reuse the same dict from above if you like:
+# Subscription duration mapping
 SUBSCRIPTION_DAYS = {
     'month': 30,
     'quarter': 90,
@@ -16,44 +16,108 @@ SUBSCRIPTION_DAYS = {
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     """
-    A view to handle Payme Webhook API calls for subscription.
+    Handles Payme Webhook API calls for subscription.
     """
 
     def check_perform_transaction(self, params):
+        """
+        Validates whether a transaction can be performed.
+        """
         account = self.fetch_account(params)
-        self.validate_amount(account, params.get('amount'))
-        result = response.CheckPerformTransaction(allow=True)
-        return result.as_resp()
+        user_program_id = account.get('id')
+
+        try:
+            user_program = UserProgram.objects.get(id=user_program_id)
+            amount = int(params.get('amount'))
+
+            # Ensure the amount matches the expected subscription cost
+            expected_amount = user_program.amount
+            if amount != expected_amount:
+                return response.CheckPerformTransaction(allow=False, message="Invalid payment amount").as_resp()
+
+            return response.CheckPerformTransaction(allow=True).as_resp()
+        except UserProgram.DoesNotExist:
+            return response.CheckPerformTransaction(allow=False, message="Invalid user program ID").as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
-        transaction = PaymeTransactions.get_by_transaction_id(
-            transaction_id=params["id"]
-        )
-        # The 'id' in your 'account' might be user_program id:
-        user_program_id = transaction.account.id  
-        user_program = UserProgram.objects.get(id=user_program_id)
+        """
+        Handles successful payments and extends the user's subscription.
+        """
+        transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
+        user_program_id = transaction.account.id
 
-        user_program.is_paid = True
+        try:
+            user_program = UserProgram.objects.get(id=user_program_id)
+            user = user_program.user
+            sub_type = user_program.subscription_type
+            add_days = SUBSCRIPTION_DAYS.get(sub_type, 30)
+            today = timezone.now().date()
 
-        # Extend subscription
-        sub_type = user_program.subscription_type
-        add_days = SUBSCRIPTION_DAYS.get(sub_type, 30)
+            # ✅ Use `UserSubscription` to track active subscription
+            user_subscription, created = UserSubscription.objects.get_or_create(
+                user=user, is_active=True, defaults={"subscription_type": sub_type}
+            )
 
-        today = timezone.now().date()
-        old_end = user_program.end_date if user_program.end_date else today
-        base_date = old_end if old_end >= today else today
-        new_end = base_date + timedelta(days=add_days)
+            user_subscription.extend_subscription(add_days)
 
-        user_program.start_date = today
-        user_program.end_date = new_end
-        user_program.save()
+            # ✅ Create sessions after payment
+            self.create_sessions_for_user(user, user_program.program)
+
+            # ✅ Mark as paid
+            user_program.is_paid = True
+            user_program.save()
+
+        except UserProgram.DoesNotExist:
+            print(f"❌ No order found with ID: {user_program_id}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
-        transaction = PaymeTransactions.get_by_transaction_id(
-            transaction_id=params["id"]
-        )
-        # In case of cancellation, mark is_paid=False or do nothing:
+        """
+        Handles canceled payments by ensuring the subscription remains unaffected.
+        """
+        transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
         user_program_id = transaction.account.id
-        user_program = UserProgram.objects.get(id=user_program_id)
-        user_program.is_paid = False
-        user_program.save()
+
+        try:
+            user_program = UserProgram.objects.get(id=user_program_id)
+            user_program.is_paid = False
+            user_program.save()
+        except UserProgram.DoesNotExist:
+            print(f"❌ No order found with ID: {user_program_id}")
+
+    def create_sessions_for_user(self, user, program):
+        """
+        Generates session records **only after payment is successful**.
+        """
+        from users_app.models import SessionCompletion, MealCompletion, ExerciseCompletion
+
+        sessions = program.sessions.order_by("session_number")
+        start_date = timezone.now().date()
+
+        for index, session in enumerate(sessions, start=1):
+            session_date = start_date + timedelta(days=index - 1)
+
+            SessionCompletion.objects.create(
+                user=user,
+                session=session,
+                is_completed=False,
+                session_number_private=session.session_number,
+                session_date=session_date,
+            )
+
+            for meal in session.meals.all():
+                MealCompletion.objects.create(
+                    user=user,
+                    meal=meal,
+                    session=session,
+                    is_completed=False,
+                    meal_date=session_date,
+                )
+
+            for exercise in session.exercises.all():
+                ExerciseCompletion.objects.create(
+                    user=user,
+                    exercise=exercise,
+                    session=session,
+                    is_completed=False,
+                    exercise_date=session_date,
+                )

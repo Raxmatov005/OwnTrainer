@@ -11,12 +11,12 @@ class IsSubscriptionActive(BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        user_program = UserProgram.objects.filter(user=request.user, is_paid=True).first()
-        if not user_program:
-            return False
+        return UserSubscription.objects.filter(user=request.user,
+                                               is_active=True,
+                                               end_date__gte=timezone.now().date()).exists()
 
-        # is_paid + end_date >= today
-        return user_program.is_subscription_active()
+
+
 
 
 class StaffOrSubscriptionActive(BasePermission):

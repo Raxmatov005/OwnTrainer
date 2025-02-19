@@ -144,7 +144,62 @@ class Program(models.Model):
             self.is_active = False
             self.save()
 
-# users_app/models.py
+
+
+class UserSubscription(models.Model):
+    """
+    Tracks actual subscription payments and durations separately from sessions.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
+    subscription_type = models.CharField(
+        max_length=20,
+        choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')],
+        default='month'
+    )
+    start_date = models.DateField(default=timezone.now)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        """
+        ✅ Automatically sets the correct `end_date` based on subscription type.
+        ✅ Prevents expired subscriptions from being marked active.
+        """
+        if not self.end_date:
+            add_days = {
+                'month': 30,
+                'quarter': 90,
+                'year': 365
+            }.get(self.subscription_type, 30)
+
+            self.end_date = self.start_date + timedelta(days=add_days)
+
+        # Ensure subscription is not active if expired
+        if self.end_date < timezone.now().date():
+            self.is_active = False
+
+        super(UserSubscription, self).save(*args, **kwargs)
+
+    def is_subscription_active(self):
+        """
+        ✅ Checks if the subscription is still valid.
+        """
+        return self.is_active and self.end_date >= timezone.now().date()
+
+    def extend_subscription(self, add_days):
+        """
+        ✅ Extends subscription duration based on additional payments.
+        """
+        if self.end_date >= timezone.now().date():
+            self.end_date += timedelta(days=add_days)
+        else:
+            self.start_date = timezone.now().date()
+            self.end_date = self.start_date + timedelta(days=add_days)
+        self.save()
+
+    def __str__(self):
+        return f"{self.user} - {self.subscription_type} (Active: {self.is_active})"
+
 
 from django.db import models
 from django.utils import timezone
@@ -153,6 +208,10 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 # from users_app.models import SessionCompletion, Program, User (adjust as needed)
 
 class UserProgram(models.Model):
+    """
+    Tracks user's selected program and their progress.
+    Does NOT manage payments anymore. Payments are handled by `UserSubscription`.
+    """
     user = models.ForeignKey(
         'User',
         on_delete=models.CASCADE,
@@ -166,35 +225,14 @@ class UserProgram(models.Model):
         null=True
     )
 
-    # Your original approach: automatically set the date when created
     start_date = models.DateField(auto_now_add=True)
-
     end_date = models.DateField(null=True, blank=True)
     progress = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
-    # Payment-related fields
+    # REMOVE is_paid & subscription_type (Handled in UserSubscription)
     amount = models.IntegerField(blank=True, null=True)
-    is_paid = models.BooleanField(default=False)
-
-    # Make payment_method nullable/blank if you want
     payment_method = models.CharField(max_length=255, blank=True, null=True)
-
-    # --- NEW SUBSCRIPTION FIELDS ---
-    SUBSCRIPTION_CHOICES = [
-        ('month', 'Monthly'),
-        ('quarter', '3-Month'),
-        ('year', 'Yearly'),
-    ]
-    # We allow blank=True, null=True so user_program can exist without subscription
-    subscription_type = models.CharField(
-        max_length=20,
-        choices=SUBSCRIPTION_CHOICES,
-        default='month',
-        blank=True,
-        null=True
-    )
-    # --------------------------------
 
     def calculate_progress(self):
         """
@@ -216,26 +254,21 @@ class UserProgram(models.Model):
         return 0
 
     def is_subscription_active(self):
-        if not self.is_paid or not self.end_date:
-            return False  # No valid subscription
-
-        if self.end_date < timezone.now().date():
-            self.is_paid = False  # Mark as unpaid
-            self.save()
-            return False
-
-        return True
+        """
+        ✅ Check if the user has an active subscription (handled in `UserSubscription`).
+        """
+        return UserSubscription.objects.filter(user=self.user, is_active=True, end_date__gte=timezone.now().date()).exists()
 
     def __str__(self):
         """
-        Combined display: e.g. "john@example.com - Weight Loss (Paid=True)"
+        Display user's selected program.
         """
         if self.program:
             program_goal = self.program.program_goal
         else:
             program_goal = "No Program"
 
-        return f"{self.user} - {program_goal} (Paid={self.is_paid})"
+        return f"{self.user} - {program_goal}"
 
 
 class WorkoutCategory(models.Model):

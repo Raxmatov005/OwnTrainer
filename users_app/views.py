@@ -691,3 +691,30 @@ class SetReminderTimeView(APIView):
 
         except ValueError:
             return Response({"error": "Invalid time format. Use 'HH:MM' format."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# subscriptions/views.py
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+
+# Reuse the existing dictionary
+SUBSCRIPTION_OPTIONS = {
+    "month": {"price": 10000, "days": 30, "label": "Monthly"},
+    "quarter": {"price": 25000, "days": 90, "label": "Quarterly"},
+    "year": {"price": 90000, "days": 365, "label": "Yearly"}
+}
+
+class SubscriptionOptionsAPIView(APIView):
+    """
+    ✅ Returns available subscription options to the mobile developer.
+    """
+
+    permission_classes = [AllowAny]  # Anyone can access
+
+    def get(self, request, *args, **kwargs):
+        """
+        Returns a list of available subscription plans with prices and duration.
+        """
+        return Response({"subscriptions": SUBSCRIPTION_OPTIONS})

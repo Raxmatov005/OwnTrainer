@@ -237,47 +237,31 @@ class SessionViewSet(viewsets.ModelViewSet):
     )
     def list(self, request):
         """
-        1) Admin users => returns all sessions.
-        2) Regular user => returns all incomplete sessions (by session_number).
-           Adds a 'locked' field to indicate sessions after the next incomplete session.
+        Returns available sessions for the user.
         """
-        if request.user.is_staff:
-            sessions = Session.objects.all().order_by('session_number')
-            serializer = self.get_serializer(sessions, many=True)
-            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
+        user_subscription = UserSubscription.objects.filter(user=request.user, is_active=True).first()
+        if not user_subscription or not user_subscription.is_subscription_active():
+            return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
 
-        # Check for active program
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
-            return Response(
-                {"error": _("No active program found for the user.")},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": _("No active program found for the user.")}, status=404)
 
-        # ✅ Check if `SessionCompletion` records exist at all
-        all_sc = SessionCompletion.objects.filter(user=request.user, session__program=user_program.program)
-        if not all_sc.exists():
-            return Response(
-                {"error": _(
-                    "No sessions have been assigned to you yet. Please check your program or contact support.")},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # ✅ Get all incomplete sessions (is_completed=False)
-        incomplete_sc = all_sc.filter(is_completed=False).select_related('session').order_by('session__session_number')
+        incomplete_sc = SessionCompletion.objects.filter(
+            user=request.user,
+            session__program=user_program.program,
+            is_completed=False
+        ).select_related('session').order_by('session__session_number')
 
         if not incomplete_sc.exists():
-            return Response({"message": _("You have no incomplete sessions remaining.")}, status=status.HTTP_200_OK)
+            return Response({"message": _("You have completed all sessions!")}, status=200)
 
-        # The "next" session is the first incomplete in ascending order
         next_sc = incomplete_sc.first()
         next_session_number = next_sc.session.session_number
 
-        # Collect the Session IDs for all incomplete SessionCompletions
         session_ids = [sc.session_id for sc in incomplete_sc]
         sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
 
-        # Build JSON with "locked" = True/False
         data = []
         for s in sessions:
             ser = self.get_serializer(s).data
@@ -628,55 +612,12 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         except Program.DoesNotExist:
             return Response({"error": "Invalid or inactive program_id."}, status=status.HTTP_404_NOT_FOUND)
 
-        # user_program = UserProgram.objects.filter(user=request.user, program=program).first()
-        # if user_program and not user_program.is_subscription_active():
-        #     return Response({"error": "Your subscription has ended. Please renew."}, status=403)
-
-        # Use a different serializer
         create_serializer = UserProgramCreateSerializer(data=request.data)
         if create_serializer.is_valid():
-            user_program = create_serializer.save(user=request.user, program=program)
+            # ✅ Save program selection but **DO NOT CREATE SESSIONS YET**
+            user_program = create_serializer.save(user=request.user, program=program, is_paid=False)
 
-            if user_program.is_paid:
-                sessions = program.sessions.order_by("session_number")
-                start_date = timezone.now().date()
-                total_sessions = sessions.count()
-                end_date = start_date + timedelta(days=total_sessions)
-
-                user_program.start_date = start_date
-                user_program.end_date = end_date
-                user_program.save()
-
-                for index, session in enumerate(sessions, start=1):
-                    session_date = start_date + timedelta(days=index - 1)
-
-                    SessionCompletion.objects.create(
-                        user=request.user,
-                        session=session,
-                        is_completed=False,
-                        session_number_private=session.session_number,
-                        session_date=session_date,
-                    )
-
-                    for meal in session.meals.all():
-                        MealCompletion.objects.create(
-                            user=request.user,
-                            meal=meal,
-                            session=session,
-                            is_completed=False,
-                            meal_date=session_date,
-                        )
-
-                    for exercise in session.exercises.all():
-                        ExerciseCompletion.objects.create(
-                            user=request.user,
-                            exercise=exercise,
-                            session=session,
-                            is_completed=False,
-                            exercise_date=session_date,
-                        )
-
-            message = translate_text("User program created successfully", language)
+            message = "Program selected. Complete payment to access sessions."
             return Response({"message": message, "user_program": create_serializer.data},
                             status=status.HTTP_201_CREATED)
 
@@ -689,15 +630,22 @@ class UserProgramViewSet(viewsets.ModelViewSet):
     def update(self, request, pk=None):
         language = self.get_user_language()
         user_program = self.get_object()
+
         if user_program.user != request.user:
             message = translate_text("You do not have permission to update this user program.", language)
-            return Response({"error": message}, status=403)
-        serializer = self.get_serializer(user_program, data=request.data)
+            return Response({"error": message}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(user_program, data=request.data, partial=True)
         if serializer.is_valid():
+            # Ensure that if the program is changed, is_paid is reset
+            if "program" in request.data and user_program.program_id != request.data["program"]:
+                serializer.validated_data["is_paid"] = False  # Reset payment status
+
             serializer.save()
             message = translate_text("User program updated successfully", language)
             return Response({"message": message, "user_program": serializer.data})
-        return Response(serializer.errors, status=400)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         tags=['User Programs'],
