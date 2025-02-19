@@ -8,7 +8,7 @@ from pyclick import PyClick
 from pyclick.views import PyClickMerchantAPIView
 from users_app.models import UserSubscription, UserProgram, SessionCompletion, MealCompletion, ExerciseCompletion
 from datetime import timedelta
-
+from .serializers import ClickOrderSerializer
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 10000,
