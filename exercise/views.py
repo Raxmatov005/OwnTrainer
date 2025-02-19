@@ -237,7 +237,7 @@ class SessionViewSet(viewsets.ModelViewSet):
     )
     def list(self, request):
         """
-        1) Staff => returns all sessions.
+        1) Admin users => returns all sessions.
         2) Regular user => returns all incomplete sessions (by session_number).
            Adds a 'locked' field to indicate sessions after the next incomplete session.
         """
@@ -245,43 +245,46 @@ class SessionViewSet(viewsets.ModelViewSet):
             sessions = Session.objects.all().order_by('session_number')
             serializer = self.get_serializer(sessions, many=True)
             return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
-        else:
-            # Check for active program
-            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-            if not user_program:
-                return Response(
-                    {"error": _("No active program found for the user.")},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            # if not user_program.is_subscription_active():
-            #     return Response({"error": "Your subscription has ended. Please renew."}, status=403)
 
-            # Find all incomplete SessionCompletion for this program
-            incomplete_sc = SessionCompletion.objects.filter(
-                user=request.user,
-                session__program=user_program.program,
-                is_completed=False
-            ).select_related('session').order_by('session__session_number')
+        # Check for active program
+        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+        if not user_program:
+            return Response(
+                {"error": _("No active program found for the user.")},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-            if not incomplete_sc.exists():
-                return Response({"message": _("You have completed all sessions!")}, status=200)
+        # ✅ Check if `SessionCompletion` records exist at all
+        all_sc = SessionCompletion.objects.filter(user=request.user, session__program=user_program.program)
+        if not all_sc.exists():
+            return Response(
+                {"error": _(
+                    "No sessions have been assigned to you yet. Please check your program or contact support.")},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-            # The "next" session is the first incomplete in ascending order
-            next_sc = incomplete_sc.first()
-            next_session_number = next_sc.session.session_number
+        # ✅ Get all incomplete sessions (is_completed=False)
+        incomplete_sc = all_sc.filter(is_completed=False).select_related('session').order_by('session__session_number')
 
-            # Collect the Session IDs for all incomplete SessionCompletions
-            session_ids = [sc.session_id for sc in incomplete_sc]
-            sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
+        if not incomplete_sc.exists():
+            return Response({"message": _("You have no incomplete sessions remaining.")}, status=status.HTTP_200_OK)
 
-            # Build JSON with "locked" = True/False
-            data = []
-            for s in sessions:
-                ser = self.get_serializer(s).data
-                ser["locked"] = (s.session_number > next_session_number)
-                data.append(ser)
+        # The "next" session is the first incomplete in ascending order
+        next_sc = incomplete_sc.first()
+        next_session_number = next_sc.session.session_number
 
-            return Response({"sessions": data}, status=200)
+        # Collect the Session IDs for all incomplete SessionCompletions
+        session_ids = [sc.session_id for sc in incomplete_sc]
+        sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
+
+        # Build JSON with "locked" = True/False
+        data = []
+        for s in sessions:
+            ser = self.get_serializer(s).data
+            ser["locked"] = (s.session_number > next_session_number)
+            data.append(ser)
+
+        return Response({"sessions": data}, status=200)
 
     @swagger_auto_schema(
         tags=['Sessions'],
