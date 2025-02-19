@@ -637,12 +637,23 @@ class UserProgramViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(user_program, data=request.data, partial=True)
         if serializer.is_valid():
-            # Ensure that if the program is changed, is_paid is reset
-            if "program" in request.data and user_program.program_id != request.data["program"]:
-                serializer.validated_data["is_paid"] = False  # Reset payment status
+            # Detect if subscription is being renewed (e.g., `is_paid` was False, now True)
+            was_unpaid = not user_program.is_paid
+            is_now_paid = serializer.validated_data.get("is_paid", user_program.is_paid)
+
+            # Extend end_date if necessary (if user is renewing)
+            new_end_date = serializer.validated_data.get("end_date")
+            if new_end_date and new_end_date > user_program.end_date:
+                user_program.end_date = new_end_date
 
             serializer.save()
-            message = translate_text("User program updated successfully", language)
+
+            # 🚀 Just update the subscription—do NOT recreate any sessions
+            if was_unpaid and is_now_paid:
+                message = translate_text("Subscription renewed successfully.", language)
+            else:
+                message = translate_text("User program updated successfully", language)
+
             return Response({"message": message, "user_program": serializer.data})
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -677,6 +688,8 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         user_program.delete()
         message = translate_text("User program deleted successfully", language)
         return Response({"message": message})
+
+
 
 class UserFullProgramDetailView(APIView):
     permission_classes = [IsAuthenticated]

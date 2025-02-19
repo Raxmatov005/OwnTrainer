@@ -22,6 +22,7 @@ SUBSCRIPTION_DAYS = {
 }
 
 class CreateClickOrderView(CreateAPIView):
+    serializer_class = ClickOrderSerializer
     """
     This view processes subscription payments via Click and creates a payment link.
     """
