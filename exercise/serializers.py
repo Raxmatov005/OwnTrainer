@@ -146,6 +146,8 @@ class UserProgramCreateSerializer(serializers.ModelSerializer):
 
 
 class UserProgramSerializer(serializers.ModelSerializer):
+    is_paid = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProgram
         fields = ['id', 'user', 'program', 'start_date', 'end_date', 'progress', 'is_active', 'is_paid']
@@ -156,10 +158,11 @@ class UserProgramSerializer(serializers.ModelSerializer):
             'end_date': {'label': _("End Date")},
             'progress': {'label': _("Progress")},
             'is_active': {'label': _("Is Active")},
-            'is_paid': {'label': _("Is Paid")},
         }
 
-
+    def get_is_paid(self, obj):
+        """Check if the user has an active subscription."""
+        return obj.has_active_subscription()  # Ensure this method exists in UserProgram
 
 
 class UserProgramAllSerializer(serializers.ModelSerializer):
