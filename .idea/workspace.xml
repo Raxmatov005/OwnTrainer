@@ -6,7 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/click_app/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/click_app/serializers.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -188,7 +187,7 @@
       <workItem from="1739884271902" duration="1741000" />
       <workItem from="1739896925827" duration="6000000" />
       <workItem from="1739904106757" duration="347000" />
-      <workItem from="1739935841085" duration="11725000" />
+      <workItem from="1739935841085" duration="13611000" />
     </task>
     <task id="LOCAL-00001" summary=".">
       <option name="closed" value="true" />
@@ -566,7 +565,15 @@
       <option name="project" value="LOCAL" />
       <updated>1739949162388</updated>
     </task>
-    <option name="localTasksCounter" value="48" />
+    <task id="LOCAL-00048" summary=".">
+      <option name="closed" value="true" />
+      <created>1739949806230</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1739949806230</updated>
+    </task>
+    <option name="localTasksCounter" value="49" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

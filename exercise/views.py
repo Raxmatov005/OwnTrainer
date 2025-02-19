@@ -372,7 +372,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         operation_description=_("Retrieve exercises by category ID"),
         manual_parameters=[
             openapi.Parameter(
-                'category_id', openapi.IN_QUERY, 
+                'category_id', openapi.IN_QUERY,
                 description="ID of the category to filter exercises by",
                 type=openapi.TYPE_INTEGER,
                 required=True
@@ -495,7 +495,7 @@ class WorkoutCategoryViewSet(viewsets.ModelViewSet):
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to create a workout category.", language)
             return Response({"error": message}, status=403)
-        
+
         # Parse the request for form data and files
         data = request.data.copy()
         workout_image = request.FILES.get('workout_image')
@@ -615,7 +615,7 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         create_serializer = UserProgramCreateSerializer(data=request.data)
         if create_serializer.is_valid():
             # ✅ Save program selection but **DO NOT CREATE SESSIONS YET**
-            user_program = create_serializer.save(user=request.user, program=program, is_paid=False)
+            user_program = create_serializer.save(user=request.user, program=program)
 
             message = "Program selected. Complete payment to access sessions."
             return Response({"message": message, "user_program": create_serializer.data},
