@@ -197,6 +197,10 @@ class UserSubscription(models.Model):
             self.end_date = self.start_date + timedelta(days=add_days)
         self.save()
 
+        # 🚀 Auto-create sessions on subscription activation
+        from exercise.views import create_sessions_for_user
+        create_sessions_for_user(self.user)  # ✅ Call the function to create sessions
+
     def __str__(self):
         return f"{self.user} - {self.subscription_type} (Active: {self.is_active})"
 
