@@ -1,17 +1,15 @@
 from django.contrib import admin
-
-
-from users_app.models import UserProgram
-
+from users_app.models import UserProgram, UserSubscription
 
 class UserProgramAdmin(admin.ModelAdmin):
-    """
-    Custom admin interface for PaymeTransactions model.
-    """
-    list_display = ('id', 'user_id', 'program_id', 'amount', 'is_paid', 'payment_method', 'start_date', 'end_date')
-    list_filter = ('is_paid', 'payment_method')
-    search_fields = ('id', 'user_id', 'amount', 'payment_method')
+    list_display = ["id", "user", "program", "start_date", "end_date", "get_is_paid"]
+    list_filter = ["get_is_paid"]
 
+    def get_is_paid(self, obj):
+        subscription = UserSubscription.objects.filter(user=obj.user, is_active=True).first()
+        return subscription.is_active if subscription else False
 
+    get_is_paid.short_description = "Is Paid"
+    get_is_paid.boolean = True  # Show as a boolean (✔/❌) in the admin panel
 
 admin.site.register(UserProgram, UserProgramAdmin)
