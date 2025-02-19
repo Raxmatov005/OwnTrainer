@@ -162,7 +162,7 @@ class UserProgramSerializer(serializers.ModelSerializer):
 
     def get_is_paid(self, obj):
         """Check if the user has an active subscription."""
-        return obj.has_active_subscription()  # Ensure this method exists in UserProgram
+        return obj.is_subscription_active()  # Ensure this method exists in UserProgram
 
 
 class UserProgramAllSerializer(serializers.ModelSerializer):
