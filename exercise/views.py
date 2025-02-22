@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
-from users_app.models import Program, Session, SessionCompletion, ExerciseBlock, Exercise
-from exercise.serializers import ProgramSerializer, SessionNestedSerializer, EmptyQuerySerializer
+from users_app.models import *
+from exercise.serializers import *
 from django.utils.translation import gettext_lazy as _
 from drf_yasg.utils import swagger_auto_schema
 from exercise.permissions import IsAdminOrReadOnly
