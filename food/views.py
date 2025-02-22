@@ -12,7 +12,8 @@ from food.serializers import (
     NestedPreparationSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    NestedPreparationStepSerializer
+    NestedPreparationStepSerializer,
+    EmptyQuerySerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
