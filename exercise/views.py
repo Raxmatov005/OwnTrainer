@@ -13,12 +13,22 @@ from drf_yasg import openapi
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils.timezone import now
-from django.utils.translation import gettext as _
 from .serializers import SessionSerializer
 from django.utils.dateparse import parse_date
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
+
+
+from django.utils import timezone
+
+################################
+##                            ##
+##   This Should be checked   ##
+##                            ##
+################################
+from rest_framework.permissions import IsAuthenticated
+
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
@@ -93,74 +103,66 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
 
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.utils.translation import gettext_lazy as _
-from django.utils.timezone import now
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.parsers import MultiPartParser, FormParser
+from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext_lazy as _
+from django.utils.timezone import now
 
-# Make sure to import your models & serializers
-# from .permissions import IsAdminOrReadOnly  # or wherever you defined this
-# from users_app.models import Program, UserProgram, Session, SessionCompletion
-# from .serializers import ProgramSerializer, SessionSerializer
+from users_app.models import Program, Session, SessionCompletion, UserProgram, UserSubscription
+from exercise.serializers import SessionNestedSerializer
+from exercise.permissions import IsAdminOrReadOnly
+
 
 class SessionViewSet(viewsets.ModelViewSet):
+    """
+    Updated Session view.
+
+    - Each Session is linked to a Program (passed in via 'program').
+    - When a session is created, the serializer auto-creates an ExerciseBlock (with nested exercises)
+      and links it to the Session.
+    - Fields like cover_image and calories_burned have been removed from Session.
+    """
     queryset = Session.objects.all()
-    serializer_class = SessionSerializer
+    serializer_class = SessionNestedSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
 
-    def get_user_language(self, request):
-        return getattr(request.user, 'language', 'en')
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        language = self.request.query_params.get('lang', 'en')
+        context['language'] = language
+        return context
 
     def get_serializer(self, *args, **kwargs):
-        # Skip serializer requirement for reset_today_session if needed
+        # For actions like 'reset_today_session', you may bypass the serializer.
         if self.action == 'reset_today_session':
             return None
         return super().get_serializer(*args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Sessions'],
-        operation_description=_("Create a new session for a program")
+        operation_description=_("Create a new session for a program (with nested exercise block).")
     )
     def create(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({"error": _("You do not have permission to create a session.")},
                             status=status.HTTP_403_FORBIDDEN)
-
+        # Ensure program_id is provided.
         program_id = request.data.get('program')
         if not program_id:
             return Response({"error": _("Program ID is required to create a session.")},
                             status=status.HTTP_400_BAD_REQUEST)
-
-        # Validate program existence
         try:
             program = Program.objects.get(id=program_id)
         except Program.DoesNotExist:
             return Response({"error": _("Specified program does not exist.")},
                             status=status.HTTP_404_NOT_FOUND)
-
-        # Convert exercises and meals to lists
-        exercises = request.data.get('exercises', [])
-        meals = request.data.get('meals', [])
-        if isinstance(exercises, str):
-            exercises = exercises.split(',')
-        if isinstance(meals, str):
-            meals = meals.split(',')
-
-        # Make QueryDict mutable to set exercises/meals
-        request.data._mutable = True
-        request.data.setlist('exercises', exercises)
-        request.data.setlist('meals', meals)
-
-        # Handle cover_image if provided
-        cover_image = request.FILES.get('cover_image')
-        if cover_image:
-            request.data['cover_image'] = cover_image
-
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -168,7 +170,6 @@ class SessionViewSet(viewsets.ModelViewSet):
                 "message": _("Session created successfully"),
                 "session": serializer.data
             }, status=status.HTTP_201_CREATED)
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -185,17 +186,13 @@ class SessionViewSet(viewsets.ModelViewSet):
         operation_description=_("Update a session by ID")
     )
     def update(self, request, pk=None):
-        language = self.get_user_language(request)
         session = self.get_object()
         if not request.user.is_superuser:
-            message = _("You do not have permission to update this session.")
-            return Response({"error": message}, status=403)
-
+            return Response({"error": _("You do not have permission to update this session.")}, status=403)
         serializer = self.get_serializer(session, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            message = _("Session updated successfully")
-            return Response({"message": message, "session": serializer.data})
+            return Response({"message": _("Session updated successfully"), "session": serializer.data})
         return Response(serializer.errors, status=400)
 
     @swagger_auto_schema(
@@ -203,17 +200,13 @@ class SessionViewSet(viewsets.ModelViewSet):
         operation_description=_("Partially update a session by ID")
     )
     def partial_update(self, request, pk=None):
-        language = self.get_user_language(request)
         session = self.get_object()
         if not request.user.is_superuser:
-            message = _("You do not have permission to partially update this session.")
-            return Response({"error": message}, status=403)
-
+            return Response({"error": _("You do not have permission to partially update this session.")}, status=403)
         serializer = self.get_serializer(session, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            message = _("Session partially updated successfully")
-            return Response({"message": message, "session": serializer.data})
+            return Response({"message": _("Session partially updated successfully"), "session": serializer.data})
         return Response(serializer.errors, status=400)
 
     @swagger_auto_schema(
@@ -221,28 +214,23 @@ class SessionViewSet(viewsets.ModelViewSet):
         operation_description=_("Delete a session")
     )
     def destroy(self, request, pk=None):
-        language = self.get_user_language(request)
         if not request.user.is_superuser:
-            message = _("You do not have permission to delete this session.")
-            return Response({"error": message}, status=403)
-
+            return Response({"error": _("You do not have permission to delete this session.")}, status=403)
         session = self.get_object()
         session.delete()
-        message = _("Session deleted successfully")
-        return Response({"message": message})
+        return Response({"message": _("Session deleted successfully")})
 
     @swagger_auto_schema(
         tags=['Sessions'],
         operation_description=_("List sessions for the user. Staff sees all sessions.")
     )
     def list(self, request):
-        """
-        Returns available sessions for the user.
-        """
+        # Check subscription status (if not active, return an error)
+        from users_app.models import UserSubscription
         user_subscription = UserSubscription.objects.filter(user=request.user, is_active=True).first()
         if not user_subscription or not user_subscription.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-
+        from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
             return Response({"error": _("No active program found for the user.")}, status=404)
@@ -258,16 +246,13 @@ class SessionViewSet(viewsets.ModelViewSet):
 
         next_sc = incomplete_sc.first()
         next_session_number = next_sc.session.session_number
-
         session_ids = [sc.session_id for sc in incomplete_sc]
         sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
-
         data = []
         for s in sessions:
             ser = self.get_serializer(s).data
             ser["locked"] = (s.session_number > next_session_number)
             data.append(ser)
-
         return Response({"sessions": data}, status=200)
 
     @swagger_auto_schema(
@@ -283,36 +268,28 @@ class SessionViewSet(viewsets.ModelViewSet):
             )
         ],
         responses={
-            200: SessionSerializer(),
+            200: SessionNestedSerializer(),
             400: "session_number is required.",
             404: "Session not found or no active program."
         }
     )
     @action(detail=False, methods=['get'], url_path='by-session-number')
     def get_by_session_number(self, request):
+        from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
-            return Response(
-                {"error": _("No active program found for the logged-in user.")},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+            return Response({"error": _("No active program found for the logged-in user.")},
+                            status=404)
         session_number = request.query_params.get('session_number')
         if not session_number:
-            return Response(
-                {"error": "session_number is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "session_number is required."}, status=400)
         try:
             session = Session.objects.get(program=user_program.program, session_number=session_number)
         except Session.DoesNotExist:
-            return Response(
-                {"error": "Session not found for the given session_number in the user's program."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+            return Response({"error": "Session not found for the given session_number in the user's program."},
+                            status=404)
         serializer = self.get_serializer(session)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=200)
 
     @swagger_auto_schema(
         operation_description=_("Reset today's session for the logged-in user"),
@@ -324,27 +301,49 @@ class SessionViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=['post'], url_path='reset-today-session', permission_classes=[IsAuthenticated])
     def reset_today_session(self, request):
-        """
-        This endpoint resets the session assigned to "today" (based on session_date).
-        If you no longer rely on session_date, you might not need this anymore.
-        """
+        from users_app.models import SessionCompletion
         today_sc = SessionCompletion.objects.filter(
             user=request.user,
             session_date=now().date()
         ).first()
-
         if not today_sc:
-            return Response({"error": _("No session found for today.")},
-                            status=status.HTTP_404_NOT_FOUND)
-
+            return Response({"error": _("No session found for today.")}, status=404)
         today_sc.is_completed = False
         today_sc.completion_date = None
         today_sc.save()
+        return Response({"message": _("Today's session has been reset successfully.")}, status=200)
 
-        return Response(
-            {"message": _("Today's session has been reset successfully.")},
-            status=status.HTTP_200_OK
-        )
+
+class CompleteBlockView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Complete the entire exercise block for a session."),
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'block_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="ID of the ExerciseBlock")
+            },
+            required=['block_id']
+        ),
+        responses={200: "Block completed successfully. Session completed."}
+    )
+    def post(self, request):
+        block_id = request.data.get("block_id")
+        if not block_id:
+            return Response({"error": _("block_id is required.")}, status=400)
+        block = get_object_or_404(ExerciseBlock, id=block_id)
+        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+        if not request.user.is_staff:
+            if not user_program or not user_program.is_subscription_active():
+                return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
+        bc, created = block.completions.get_or_create(user=request.user)
+        if bc.is_completed:
+            return Response({"message": _("Block already completed.")}, status=200)
+        bc.is_completed = True
+        bc.save()  # triggers session completion via model logic
+        return Response({"message": _("Block completed successfully.")}, status=200)
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
@@ -466,101 +465,8 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-class WorkoutCategoryViewSet(viewsets.ModelViewSet):
-    queryset = WorkoutCategory.objects.all()
-    serializer_class = WorkoutCategorySerializer
-    permission_classes = [IsAuthenticated,IsAdminOrReadOnly]
-    parser_classes = [MultiPartParser, FormParser]
 
 
-    def get_user_language(self):
-        # Assuming the user's preferred language is stored in the User model
-        return self.request.user.language if hasattr(self.request.user, 'language') else 'en'
-
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("List all workout categories"))
-    def list(self, request):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({"workout_categories": serializer.data})
-
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Retrieve workout category by ID"))
-    def retrieve(self, request, pk=None):
-        workout_category = self.get_object()
-        serializer = self.get_serializer(workout_category)
-        return Response({"workout_category": serializer.data})
-
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Create a new workout category"))
-    def create(self, request, *args, **kwargs):
-        language = self.get_user_language()
-        if not request.user.is_superuser:
-            message = translate_text("You do not have permission to create a workout category.", language)
-            return Response({"error": message}, status=403)
-
-        # Parse the request for form data and files
-        data = request.data.copy()
-        workout_image = request.FILES.get('workout_image')
-        if workout_image:
-            data['workout_image'] = workout_image
-
-        serializer = self.get_serializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            message = translate_text("Workout category created successfully", language)
-            return Response({"message": message, "workout_category": serializer.data}, status=201)
-        return Response(serializer.errors, status=400)
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Update a workout category by ID"))
-    def update(self, request, pk=None):
-        language = self.get_user_language()
-        workout_category = self.get_object()
-        if not request.user.is_superuser:
-            message = translate_text("You do not have permission to update this workout category.", language)
-            return Response({"error": message}, status=403)
-        serializer = self.get_serializer(workout_category, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            message = translate_text("Workout category updated successfully", language)
-            return Response({"message": message, "workout_category": serializer.data})
-        return Response(serializer.errors, status=400)
-
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Partially update a workout category by ID"))
-    def partial_update(self, request, pk=None):
-        language = self.get_user_language()
-        workout_category = self.get_object()
-        if not request.user.is_superuser:
-            message = translate_text("You do not have permission to partially update this workout category.", language)
-            return Response({"error": message}, status=403)
-        serializer = self.get_serializer(workout_category, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            message = translate_text("Workout category updated successfully", language)
-            return Response({"message": message, "workout_category": serializer.data})
-        return Response(serializer.errors, status=400)
-
-    @swagger_auto_schema(tags=['Workout Categories'], operation_description=_("Delete a workout category"))
-    def destroy(self, request, pk=None):
-        language = self.get_user_language()
-        if not request.user.is_superuser:
-            message = translate_text("You do not have permission to delete this workout category.", language)
-            return Response({"error": message}, status=403)
-        workout_category = self.get_object()
-        workout_category.delete()
-        message = translate_text("Workout category deleted successfully", language)
-        return Response({"message": message})
-
-
-from datetime import timedelta
-from django.utils import timezone
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from drf_yasg.utils import swagger_auto_schema
-
-from users_app.models import (
-    Program, UserProgram, SessionCompletion,
-    MealCompletion, ExerciseCompletion, translate_text
-)
-from .serializers import UserProgramSerializer
-from .permissions import IsAdminOrReadOnly  # If you have this custom permission
 
 
 class UserProgramViewSet(viewsets.ModelViewSet):
@@ -786,73 +692,6 @@ class UserFullProgramDetailView(APIView):
         return meal_completion.is_completed if meal_completion else False
 
 
-class StartSessionView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        tags=['Sessions'],
-        operation_description="Start a session with a 10-second preparation period.",
-        request_body=SessionStartSerializer,
-        responses={
-            200: openapi.Response(
-                description="Session start information",
-                examples={
-                    "application/json": {
-                        "message": "Session will start after a 10-second preparation period.",
-                        "preparation_ends_at": "2024-12-13T16:30:10Z",
-                        "estimated_end_time": "2024-12-13T17:00:10Z"
-                    }
-                }
-            ),
-            400: "Bad Request - Missing or invalid session_id.",
-            404: "Not Found - Session not found or not assigned to user."
-        }
-    )
-    def post(self, request):
-        serializer = SessionStartSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        session_id = serializer.validated_data['session_id']
-        session_completion = SessionCompletion.objects.filter(user=request.user, session_id=session_id).first()
-
-        if not session_completion:
-            return Response({"error": _("Session not found or not assigned to user.")}, status=404)
-
-        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-        if user_program and not user_program.is_subscription_active():
-            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
-
-        if session_completion.is_completed:
-            return Response({"error": _("Session already completed.")}, status=400)
-
-        # Add 10-second preparation time
-        preparation_period = timedelta(seconds=10)
-
-        session = session_completion.session
-        exercise_duration = timedelta(
-            hours=session.session_time.hour if session.session_time else 0,
-            minutes=session.session_time.minute if session.session_time else 0,
-            seconds=session.session_time.second if session.session_time else 0
-        )
-
-        session_start_time = now() + preparation_period
-        session_end_time = session_start_time + exercise_duration
-
-        def mark_session_complete():
-            session_completion.is_completed = True
-            session_completion.completion_date = now()
-            session_completion.save()
-
-        # Schedule the completion after prep time + exercise duration
-        Timer((preparation_period + exercise_duration).total_seconds(), mark_session_complete).start()
-
-        return Response({
-            "message": _("Session will start after a 10-second preparation period."),
-            "preparation_ends_at": session_start_time,
-            "estimated_end_time": session_end_time
-        }, status=200)
-
-
 class ProgressView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -942,7 +781,7 @@ class ProgressView(APIView):
         sessions = [
             {
                 "id": session.session.id,
-                "calories_burned": float(session.session.calories_burned) if session.is_completed else 0.0,
+                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(session.session, 'block') else 0.0,
                 "status": "completed" if session.is_completed else "missed"
             }
             for session in completed_sessions
@@ -987,7 +826,8 @@ class ProgressView(APIView):
         sessions = [
             {
                 "id": session.session.id,
-                "calories_burned": float(session.session.calories_burned) if session.is_completed else 0.0,
+                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(
+                    session.session, 'block') else 0.0,
                 "status": "completed" if session.is_completed else "missed"
             }
             for session in completed_sessions
@@ -1034,7 +874,8 @@ class ProgressView(APIView):
         sessions = [
             {
                 "id": session.session.id,
-                "calories_burned": float(session.session.calories_burned) if session.is_completed else 0.0,
+                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(
+                    session.session, 'block') else 0.0,
                 "status": "completed" if session.is_completed else "missed"
             }
             for session in completed_sessions
@@ -1068,44 +909,6 @@ class ProgressView(APIView):
             "sessions": sessions,
             "meals": meals,
         }
-
-
-class ExerciseStartView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        tags=['Exercises'],
-        operation_description="Start an exercise for the given session and exercise ID.",
-        request_body=ExerciseStartSerializer,
-        responses={
-            200: openapi.Response(
-                description="Exercise started successfully.",
-                examples={
-                    "application/json": {
-                        "session_id": 1,
-                        "exercise_id": 2,
-                        "start_time": "2024-06-13T10:00:10Z",
-                        "end_time": "2024-06-13T10:30:10Z",
-                        "message": "Exercise started successfully. Countdown begins."
-                    }
-                }
-            ),
-            400: "Bad Request - Validation Error",
-            404: "Exercise not found for this session."
-        }
-    )
-    def post(self, request, *args, **kwargs):
-        serializer = ExerciseStartSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-
-            # ADD SUBSCRIPTION CHECK HERE
-            if user_program and not user_program.is_subscription_active():
-                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
-
-            data = serializer.save()
-            return Response(data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class DailySessionCompletionView(APIView):

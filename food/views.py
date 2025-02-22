@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
-from django.utils.timezone import now
-from users_app.models import Preparation, Meal, MealCompletion, SessionCompletion, Session, PreparationSteps
+
+from users_app.models import Preparation, Meal, MealCompletion, SessionCompletion, Session, PreparationSteps, UserProgram
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.translation import gettext_lazy as _
 from googletrans import Translator
@@ -11,7 +11,8 @@ from food.serializers import (
     MealCompletionSerializer,
     PreparationSerializer,
     CompleteMealSerializer,
-    MealDetailSerializer
+    MealDetailSerializer,
+    PreparationStepSerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
@@ -19,12 +20,9 @@ from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.utils.translation import gettext as _
-from food.serializers import PreparationStepSerializer
-from users_app.models import PreparationSteps
 from drf_yasg import openapi
-from django.utils.timezone import localdate
-from .serializers import MealSerializer
+from django.utils.timezone import localdate, now
+
 
 
 translator = Translator()
@@ -41,8 +39,13 @@ def translate_text(text, target_language):
 
 
 class MealViewSet(viewsets.ModelViewSet):
+    """
+    This viewset manages Meal objects using a unified nested serializer.
+    It allows creating a Meal along with its nested Preparations (and optionally PreparationSteps)
+    in a single request.
+    """
     queryset = Meal.objects.all()
-    serializer_class = MealSerializer
+    serializer_class = MealNestedSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -51,175 +54,249 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language}
 
     def get_queryset(self):
-        # Swagger schema generation uchun autentifikatsiya tekshirishni o'tkazib yuborish
+        # For Swagger schema generation, return an empty queryset
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
 
-        # Foydalanuvchi autentifikatsiyadan o‘tsa
+        # Check authentication (if not authenticated, permission will be denied)
         if not self.request.user.is_authenticated:
+            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Authentication is required to view meals.")
 
+        # Retrieve the user's active program
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
             return Meal.objects.none()
 
-        # ADD SUBSCRIPTION CHECK HERE
+        # Check subscription status; if inactive, return empty queryset
         if not user_program.is_subscription_active():
             return Meal.objects.none()
 
-        # Foydalanuvchi administrator bo'lmagan holatda faqat o'ziga tegishli meallarni ko'rsatamiz
+        # For non-admin users, return only the meals linked to their sessions
         if not self.request.user.is_staff:
+            from users_app.models import SessionCompletion
             sessions = SessionCompletion.objects.filter(user=self.request.user).values_list('session_id', flat=True)
             return Meal.objects.filter(sessions__id__in=sessions).distinct()
 
-        # Agar foydalanuvchi administrator bo'lsa, barcha meallarni ko'rsatish
+        # For admin users, return all meals
         return Meal.objects.all()
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("List all meals for the authenticated user"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("List all meals for the authenticated user"),
+        responses={200: MealNestedSerializer(many=True)}
+    )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         return Response({"meals": serializer.data})
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("Retrieve a specific meal"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Retrieve a specific meal"),
+        responses={200: MealNestedSerializer()}
+    )
     def retrieve(self, request, pk=None):
         meal = self.get_object()
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data})
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("Create a new meal with optional photo upload"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Create a new meal with nested preparations"),
+        request_body=MealNestedSerializer,
+        responses={201: MealNestedSerializer()}
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Meal created successfully", "meal": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response({
+                "message": _("Meal created successfully"),
+                "meal": serializer.data
+            }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("Update a meal by ID"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Update a meal by ID"),
+        request_body=MealNestedSerializer,
+        responses={200: MealNestedSerializer()}
+    )
     def update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
         serializer = self.get_serializer(meal, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Meal updated successfully", "meal": serializer.data})
+            return Response({
+                "message": _("Meal updated successfully"),
+                "meal": serializer.data
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("Partially update a meal by ID"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Partially update a meal by ID"),
+        request_body=MealNestedSerializer,
+        responses={200: MealNestedSerializer()}
+    )
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
         serializer = self.get_serializer(meal, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Meal partially updated successfully", "meal": serializer.data})
+            return Response({
+                "message": _("Meal partially updated successfully"),
+                "meal": serializer.data
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(tags=['Meals'], operation_description=_("Delete a meal"))
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Delete a meal"),
+        responses={204: "No Content"}
+    )
     def destroy(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
         meal.delete()
-        return Response({"message": "Meal deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-
+        return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
 class MealCompletionViewSet(viewsets.ModelViewSet):
+    """
+    This viewset manages MealCompletion records for the authenticated user.
+    It provides endpoints to list, retrieve, create, update, partially update,
+    and delete meal completion records.
+    """
     queryset = MealCompletion.objects.all()
     serializer_class = MealCompletionSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # If the view is accessed by Swagger or the user is not authenticated, return an empty queryset
+        # For Swagger or if the user is not authenticated, return an empty queryset.
         if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
             return MealCompletion.objects.none()
         return MealCompletion.objects.filter(user=self.request.user)
 
     def get_serializer_context(self):
-        # Use 'lang' query parameter to determine language, with 'en' as the default
+        # Pass the current user's language to the serializer.
         language = self.request.query_params.get('lang', 'en')
         return {**super().get_serializer_context(), "language": language}
 
-    @swagger_auto_schema(tags=['Meal Completions'],
-                         operation_description=_("List all meal completions for the authenticated user"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="List all meal completions for the authenticated user",
+        responses={200: MealCompletionSerializer(many=True)}
+    )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
         return Response({"meal_completions": serializer.data})
 
-    @swagger_auto_schema(tags=['Meal Completions'], operation_description=_("Retrieve a specific meal completion"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="Retrieve a specific meal completion",
+        responses={200: MealCompletionSerializer()}
+    )
     def retrieve(self, request, pk=None):
         meal_completion = self.get_object()
         serializer = self.get_serializer(meal_completion)
         return Response({"meal_completion": serializer.data})
 
-    @swagger_auto_schema(tags=['Meal Completions'], operation_description=_("Create a new meal completion"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="Create a new meal completion",
+        request_body=CompleteMealSerializer,
+        responses={201: MealCompletionSerializer()}
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            session = serializer.validated_data.get('session')  # Extract session
-            meal = serializer.validated_data.get('meal')  # Extract meal
             user = request.user
-
-
+            # Check active subscription for the user.
             user_program = UserProgram.objects.filter(user=user, is_active=True).first()
             if not user_program or not user_program.is_subscription_active():
-                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
-
-            # Ensure the session and meal are valid
+                return Response(
+                    {"error": "Your subscription has ended. Please renew."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            # Validate that the session and meal exist.
+            session = serializer.validated_data.get('session')
+            meal = serializer.validated_data.get('meal')
             if not Session.objects.filter(id=session.id).exists():
-                return Response({"error": _("Invalid session ID.")}, status=status.HTTP_400_BAD_REQUEST)
-
+                return Response(
+                    {"error": "Invalid session ID."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             if not Meal.objects.filter(id=meal.id).exists():
-                return Response({"error": _("Invalid meal ID.")}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Save the meal completion
+                return Response(
+                    {"error": "Invalid meal ID."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # Save the meal completion record.
             meal_completion = serializer.save(user=user)
-            return Response(
-                {
-                    "message": _("Meal completion recorded successfully"),
-                    "meal_completion": MealCompletionSerializer(meal_completion, context={"language": request.user.language}).data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
+            return Response({
+                "message": "Meal completion recorded successfully",
+                "meal_completion": MealCompletionSerializer(
+                    meal_completion, context={"language": request.user.language}
+                ).data,
+            }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(tags=['Meal Completions'], operation_description=_("Update meal completion status by ID"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="Update meal completion status by ID",
+        request_body=MealCompletionSerializer,
+        responses={200: MealCompletionSerializer()}
+    )
     def update(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         serializer = self.get_serializer(meal_completion, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Meal completion updated successfully", "meal_completion": serializer.data})
+            return Response({
+                "message": "Meal completion updated successfully",
+                "meal_completion": serializer.data
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(tags=['Meal Completions'], operation_description=_("Partially update a meal completion record"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="Partially update a meal completion record",
+        request_body=MealCompletionSerializer,
+        responses={200: MealCompletionSerializer()}
+    )
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         serializer = self.get_serializer(meal_completion, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Meal completion record partially updated successfully", "meal_completion": serializer.data})
+            return Response({
+                "message": "Meal completion record partially updated successfully",
+                "meal_completion": serializer.data
+            })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def schedule_reminder(self, meal_completion):
-        """
-        Schedules a reminder for a meal based on the user's preferred reminder time offset.
-        """
-        user_reminder_offset = getattr(self.request.user, 'reminder_time', None)
-        if meal_completion.meal and meal_completion.meal.scheduled_time and user_reminder_offset:
-            meal_time = meal_completion.meal.scheduled_time
-            reminder_time = datetime.combine(timezone.now().date(), meal_time) - timedelta(
-                minutes=user_reminder_offset.minute)
-
-            # Placeholder for scheduling logic
-            # Implement your logic to actually schedule the reminder (e.g., using Celery or Django signals)
-            print(f"Reminder scheduled at {reminder_time} for meal at {meal_time}")
-
-    @swagger_auto_schema(tags=['Meal Completions'], operation_description=_("Delete a meal completion record"))
+    @swagger_auto_schema(
+        tags=['Meal Completions'],
+        operation_description="Delete a meal completion record",
+        responses={204: "No Content"}
+    )
     def destroy(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         meal_completion.delete()
-        return Response({"message": "Meal completion record deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {"message": "Meal completion record deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 class PreparationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Preparation objects.
+    This endpoint supports listing, retrieving, creating, updating,
+    and deleting preparations, along with custom endpoints for filtering by meal_id
+    and for translating fields if missing.
+    """
     queryset = Preparation.objects.all()
     serializer_class = PreparationSerializer
     permission_classes = [IsAuthenticated]
@@ -235,7 +312,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
         context['language'] = getattr(self.request.user, 'language', 'en')
         return context
 
-    # Swagger for List Method
+    # --- List ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="List all preparations.",
@@ -244,7 +321,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    # Swagger for Retrieve Method
+    # --- Retrieve ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Retrieve a specific preparation by ID.",
@@ -253,7 +330,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    # Swagger for Create Method
+    # --- Create ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Create a new preparation with automatic translation.",
@@ -263,7 +340,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    # Swagger for Update Method (PUT)
+    # --- Update (PUT) ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Update an existing preparation completely.",
@@ -273,7 +350,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    # Swagger for Partial Update Method (PATCH)
+    # --- Partial Update (PATCH) ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Partially update a preparation.",
@@ -283,7 +360,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
-    # Swagger for Delete Method
+    # --- Destroy ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Delete a preparation by ID.",
@@ -292,7 +369,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    # Custom Endpoint: Filter Preparations by Meal ID
+    # --- Custom Endpoint: Filter by Meal ID ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Filter preparations by meal ID.",
@@ -311,16 +388,12 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def get_by_meal(self, request):
         meal_id = request.query_params.get('meal_id')
         if not meal_id:
-            return Response(
-                {"error": _("meal_id is required.")},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
+            return Response({"error": _("meal_id is required.")}, status=status.HTTP_400_BAD_REQUEST)
         preparations = self.get_queryset().filter(meal_id=meal_id)
         serializer = self.get_serializer(preparations, many=True)
         return Response({"preparations": serializer.data}, status=status.HTTP_200_OK)
 
-    # Custom Endpoint: Translate Fields
+    # --- Custom Endpoint: Translate Fields ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Translate preparation fields into multiple languages if missing.",
@@ -335,27 +408,26 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='translate')
     def translate_fields(self, request, pk=None):
         preparation = self.get_object()
-
-        # Translate fields if they are missing
         if not preparation.name_uz:
             preparation.name_uz = translate_text(preparation.name, 'uz')
         if not preparation.name_ru:
             preparation.name_ru = translate_text(preparation.name, 'ru')
         if not preparation.name_en:
             preparation.name_en = translate_text(preparation.name, 'en')
-
         if not preparation.description_uz:
             preparation.description_uz = translate_text(preparation.description, 'uz')
         if not preparation.description_ru:
             preparation.description_ru = translate_text(preparation.description, 'ru')
         if not preparation.description_en:
             preparation.description_en = translate_text(preparation.description, 'en')
-
         preparation.save()
         return Response({"message": _("Fields translated successfully.")}, status=status.HTTP_200_OK)
-
-
 class PreparationStepViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing PreparationSteps.
+    This endpoint allows listing, retrieving, creating, updating, and deleting
+    preparation steps. It also supports filtering by 'preparation_id' via a query parameter.
+    """
     queryset = PreparationSteps.objects.all()
     serializer_class = PreparationStepSerializer
     permission_classes = [IsAuthenticated]
@@ -371,7 +443,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         context['language'] = getattr(self.request.user, 'language', 'en')
         return context
 
-    # List method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="List all preparation steps or filter by preparation_id",
@@ -388,7 +459,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    # Retrieve method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Retrieve a specific preparation step by ID",
@@ -397,7 +467,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    # Create method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Create a new preparation step",
@@ -407,7 +476,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    # Update method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Update a preparation step",
@@ -417,7 +485,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    # Partial Update method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Partially update a preparation step",
@@ -427,7 +494,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
-    # Delete method uchun swagger_auto_schema
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Delete a preparation step",
@@ -436,15 +502,14 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-
 class CompleteMealView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         request_body=CompleteMealSerializer,
         responses={
-            200: "Taom muvaffaqiyatli bajarildi.",
-            404: "Session va Meal kombinatsiyasi topilmadi."
+            200: "Meal completed successfully.",
+            404: "Session and Meal combination not found."
         }
     )
     def post(self, request):
@@ -453,11 +518,12 @@ class CompleteMealView(APIView):
             session_id = serializer.validated_data.get('session_id')
             meal_id = serializer.validated_data.get('meal_id')
 
+            # Check if the user has an active subscription
             user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
             if not user_program or not user_program.is_subscription_active():
-                return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+                return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
 
-            # MealCompletion obyektini topish
+            # Look up the MealCompletion record for this session and meal
             meal_completion = MealCompletion.objects.filter(
                 session_id=session_id,
                 meal_id=meal_id,
@@ -465,53 +531,60 @@ class CompleteMealView(APIView):
             ).first()
 
             if not meal_completion:
-                return Response({"error": "Session va Meal kombinatsiyasi topilmadi."}, status=404)
+                return Response({"error": _("Session and Meal combination not found.")}, status=404)
 
             if meal_completion.is_completed:
-                return Response({"message": "Ushbu taom allaqachon bajarilgan."}, status=200)
+                return Response({"message": _("This meal has already been completed.")}, status=200)
 
-            # MealCompletionni bajarilgan deb belgilash
+            # Mark the meal as completed and set the completion date
             meal_completion.is_completed = True
             meal_completion.completion_date = now().date()
             meal_completion.save()
 
-            return Response({"message": "Taom muvaffaqiyatli bajarildi."}, status=200)
+            return Response({"message": _("Meal completed successfully.")}, status=200)
 
         return Response(serializer.errors, status=400)
 
 
+
+
+
 class UserDailyMealsView(APIView):
+    """
+    This view returns all meals for today's sessions for the authenticated user.
+    It checks the user's active program and subscription.
+
+    It uses MealDetailSerializer which is expected to return detailed meal info,
+    including nested preparations and translations.
+    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        today = localdate()  # Bugungi sana olish
+        # Get today's date
+        today = localdate()
         user = request.user
 
+        # Check if the user has an active program and subscription
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
-            return Response({"error": "Your subscription has ended. Please renew."}, status=403)
+            return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
 
-        # Bugungi sessiyalarni olish
+        # Retrieve today's session completions for the user
         user_sessions = SessionCompletion.objects.filter(
             user=user,
             session_date=today
-        ).values_list('session_id', flat=True)  # Faqat session_id larni olish
+        ).values_list('session_id', flat=True)  # Retrieve only session IDs
 
-        # Ushbu sessiyalarga bog'langan Meal obyektlarini olish
-        meals = Meal.objects.filter(
-            sessions__id__in=user_sessions
-        ).distinct()  # Takrorlangan ma'lumotlarni oldini olish
+        # Retrieve meals linked to those sessions
+        meals = Meal.objects.filter(sessions__id__in=user_sessions).distinct()
 
-        # Ma'lumotlarni serializer orqali chiqarish
-        serializer = MealSerializer(meals, many=True, context={"language": getattr(request.user, 'language', 'en')})
-
-        # Bo'sh ma'lumotlar uchun xabar
+        # If no meals found, return a message
         if not meals.exists():
-            return Response(
-                {"message": "Bugungi kunga taomlar topilmadi."},
-                status=404
-            )
+            return Response({"message": _("No meals found for today.")}, status=404)
 
+        # Serialize the meal data using MealDetailSerializer;
+        # this serializer should return detailed info including nested preparations.
+        serializer = MealDetailSerializer(meals, many=True, context={"language": getattr(user, 'language', 'en')})
         return Response({"meals": serializer.data}, status=200)
 
 
@@ -519,18 +592,12 @@ class MealDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, meal_id):
+        # Retrieve the meal along with its nested preparations and steps
         meal = Meal.objects.prefetch_related('preparations', 'preparations__steps').filter(id=meal_id).first()
-
         if not meal:
-            return Response(
-                {"error": _("Meal not found.")},
-                status=404
-            )
-
-        serializer = MealDetailSerializer(meal, context={"language": request.user.language})
-
+            return Response({"error": _("Meal not found.")}, status=404)
+        # Use the user's language (defaulting to 'en' if not set)
+        serializer = MealDetailSerializer(meal, context={"language": getattr(request.user, 'language', 'en')})
         return Response(serializer.data, status=200)
-
-
 
 

@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from googletrans import Translator
 from django.utils import timezone
 from django.utils.timezone import now
+from datetime import timedelta
 
 translator = Translator()
 
@@ -135,15 +136,6 @@ class Program(models.Model):
     def __str__(self):
         return f"{self.program_goal} "
 
-    def increment_progress(self):
-        """Increment the progress by 1, until it reaches total_sessions."""
-        if self.progress < self.total_sessions:
-            self.progress += 1
-            self.save()
-        if self.progress == self.total_sessions:
-            self.is_active = False
-            self.save()
-
 
 
 class UserSubscription(models.Model):
@@ -238,6 +230,10 @@ class UserProgram(models.Model):
     amount = models.IntegerField(blank=True, null=True)
     payment_method = models.CharField(max_length=255, blank=True, null=True)
 
+    @property
+    def is_paid(self):
+        return self.is_subscription_active()
+
     def calculate_progress(self):
         """
         Calculates how many sessions are completed vs total sessions in self.program.
@@ -275,52 +271,24 @@ class UserProgram(models.Model):
         return f"{self.user} - {program_goal}"
 
 
-class WorkoutCategory(models.Model):
-    category_name = models.CharField(max_length=255)
-    category_name_uz = models.CharField(max_length=255, blank=True, null=True)
-    category_name_ru = models.CharField(max_length=255, blank=True, null=True)
-    category_name_en = models.CharField(max_length=255, blank=True, null=True)
-
-    description = models.TextField()
-    description_uz = models.TextField(blank=True, null=True)
-    description_ru = models.TextField(blank=True, null=True)
-    description_en = models.TextField(blank=True, null=True)
-
-    workout_image = models.ImageField(upload_to='workout-category/', null=True, blank=True)
-
-    def save(self, *args, **kwargs):
-        if not self.category_name_uz:
-            self.category_name_uz = translate_text(self.category_name, 'uz')
-        if not self.category_name_ru:
-            self.category_name_ru = translate_text(self.category_name, 'ru')
-        if not self.category_name_en:
-            self.category_name_en = translate_text(self.category_name, 'en')
-
-        if not self.description_uz:
-            self.description_uz = translate_text(self.description, 'uz')
-        if not self.description_ru:
-            self.description_ru = translate_text(self.description, 'ru')
-        if not self.description_en:
-            self.description_en = translate_text(self.description, 'en')
-
-        super(WorkoutCategory, self).save(*args, **kwargs)
-
-    def __str__(self):
-        return self.category_name
 
 
 class Session(models.Model):
     program = models.ForeignKey(Program, on_delete=models.CASCADE,related_name="sessions")
-    calories_burned = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     session_number = models.IntegerField(null=False)
-    session_time = models.TimeField(null=True, blank=True)
-    cover_image=models.FileField(upload_to='session/image',blank=True,null=True)
 
-    exercises = models.ManyToManyField('Exercise', related_name='sessions')
     meals = models.ManyToManyField('Meal', related_name='sessions')
 
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+
+        # If this is a newly created Session -> increment Program's total_sessions
+        if is_new:
+            self.program.total_sessions += 1
+            self.program.save()
     def __str__(self):
-        return f"Session on {self.session_number} - {self.program}"
+        return f"Session #{self.session_number} - Program: {self.program.program_goal}"
 
 
 class SessionCompletion(models.Model):
@@ -345,10 +313,97 @@ class SessionCompletion(models.Model):
         return f"{self.user.email_or_phone} - {self.session.program.program_goal} ({status})"
 
 
+class ExerciseBlock(models.Model):
+    session = models.OneToOneField(
+        Session, on_delete=models.CASCADE, related_name='block'
+    )
+    block_name = models.CharField(max_length=255)
+    block_name_uz = models.CharField(max_length=255, blank=True, null=True)
+    block_name_ru = models.CharField(max_length=255, blank=True, null=True)
+    block_name_en = models.CharField(max_length=255, blank=True, null=True)
+
+    block_image = models.ImageField(upload_to='exercise_block_images/', blank=True, null=True)
+    block_kkal = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0.00, help_text="Approx total kkal"
+    )
+    block_water_amount = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0.00, help_text="Water amount in ml"
+    )
+    description = models.TextField(blank=True, null=True)
+    description_uz = models.TextField(blank=True, null=True)
+    description_ru = models.TextField(blank=True, null=True)
+    description_en = models.TextField(blank=True, null=True)
+
+    video_url = models.URLField(blank=True, null=True)
+    block_time = models.IntegerField(
+        blank=True, null=True, help_text="Estimated total time (minutes)"
+    )
+    calories_burned = models.DecimalField(max_digits=5, decimal_places=2, default=0.00,
+                                          help_text="Total calories burned in this block")
+
+    exercises = models.ManyToManyField(Exercise, related_name='blocks', blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.block_name_uz:
+            self.block_name_uz = translate_text(self.block_name, 'uz')
+        if not self.block_name_ru:
+            self.block_name_ru = translate_text(self.block_name, 'ru')
+        if not self.block_name_en:
+            self.block_name_en = translate_text(self.block_name, 'en')
+
+        if self.description and not self.description_uz:
+            self.description_uz = translate_text(self.description, 'uz')
+        if self.description and not self.description_ru:
+            self.description_ru = translate_text(self.description, 'ru')
+        if self.description and not self.description_en:
+            self.description_en = translate_text(self.description, 'en')
+        super(ExerciseBlock, self).save(*args, **kwargs)
+
+    def __str__(self):
+        return self.block_name
+
+
+
+class ExerciseBlockCompletion(models.Model):
+    user = models.ForeignKey(
+        'User', on_delete=models.CASCADE, related_name='block_completions'
+    )
+    block = models.ForeignKey(
+        ExerciseBlock, on_delete=models.CASCADE, related_name='completions'
+    )
+    is_completed = models.BooleanField(default=False)
+    completion_date = models.DateField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ('user', 'block')
+
+    def save(self, *args, **kwargs):
+        if self.is_completed and not self.completion_date:
+            self.completion_date = timezone.now().date()
+        super().save(*args, **kwargs)
+        self.mark_session_completed_if_done()
+
+    def mark_session_completed_if_done(self):
+        """
+        Because there's only ONE block per session,
+        if we complete this block => the Session is also completed.
+        """
+        if self.is_completed:
+            session = self.block.session
+            from users_app.models import SessionCompletion  # or import at top
+
+            sc, _ = SessionCompletion.objects.get_or_create(
+                user=self.user, session=session
+            )
+            sc.is_completed = True
+            sc.completion_date = timezone.now().date()
+            sc.save()
+
 class Exercise(models.Model):
-    category = models.ForeignKey(WorkoutCategory, on_delete=models.SET_NULL, null=True, blank=True)
-    name = models.CharField(max_length=255)
     exercise_time = models.DurationField(null=True, blank=True)
+    sequence_number = models.IntegerField(default=1)
+
+    name = models.CharField(max_length=255)
     name_uz = models.CharField(max_length=255, blank=True, null=True)
     name_ru = models.CharField(max_length=255, blank=True, null=True)
     name_en = models.CharField(max_length=255, blank=True, null=True)
@@ -358,13 +413,8 @@ class Exercise(models.Model):
     description_ru = models.TextField(blank=True, null=True)
     description_en = models.TextField(blank=True, null=True)
 
-    difficulty_level = models.CharField(max_length=50)  # E.g., Beginner, Intermediate, Advanced
-    target_muscle = models.CharField(max_length=255, blank=True, null=True)
-    target_muscle_uz = models.CharField(max_length=255, blank=True, null=True)
-    target_muscle_ru = models.CharField(max_length=255, blank=True, null=True)
-    target_muscle_en = models.CharField(max_length=255, blank=True, null=True)
 
-    video_url = models.URLField(blank=True, null=True)
+
     image = models.ImageField(upload_to='exercise_images/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -385,12 +435,7 @@ class Exercise(models.Model):
             self.description_en = translate_text(self.description, 'en')
 
 
-        if not self.target_muscle_uz:
-            self.target_muscle_uz = translate_text(self.target_muscle, 'uz')
-        if not self.target_muscle_ru:
-            self.target_muscle_ru = translate_text(self.target_muscle, 'ru')
-        if not self.target_muscle_en:
-            self.target_muscle_en = translate_text(self.target_muscle, 'en')
+
 
 
         super(Exercise, self).save(*args, **kwargs)
@@ -404,47 +449,6 @@ from django.utils.timezone import now
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
-
-class ExerciseCompletion(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="exercise_completions")
-    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="exercise_completions")
-    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, related_name="completions")
-    is_completed = models.BooleanField(default=False)
-    completion_date = models.DateField(null=True, blank=True)
-    exercise_date = models.DateField(null=True, blank=True)
-    missed = models.BooleanField(default=False)
-    reminder_sent = models.BooleanField(default=False)
-    exercise_time = models.DurationField(null=True, blank=True)
-
-    class Meta:
-        unique_together = ('user', 'session', 'exercise')
-
-    def save(self, *args, **kwargs):
-        # Automatically set the completion_date if is_completed becomes True
-        if self.is_completed and not self.completion_date:
-            self.completion_date = now().date()
-
-        super().save(*args, **kwargs)
-
-        # Trigger session check after saving
-        self.check_session_completion()
-
-    def check_session_completion(self):
-        """Check if all exercises in the session are completed."""
-        total_exercises = self.session.exercises.count()
-        completed_exercises = ExerciseCompletion.objects.filter(
-            session=self.session, user=self.user, is_completed=True
-        ).count()
-
-        if total_exercises == completed_exercises:
-            # Update or create the session completion object
-            session_completion, created = SessionCompletion.objects.get_or_create(
-                user=self.user, session=self.session
-            )
-            session_completion.is_completed = True
-            session_completion.completion_date = now().date()
-            session_completion.save()
-            logger.info(f"Session {self.session.id} marked as completed for user {self.user.id}")
 
 
 class Meal(models.Model):
@@ -487,7 +491,7 @@ class Meal(models.Model):
         super(Meal, self).save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.meal_type.capitalize()} for {self.session.user} on {self.session.date}"
+        return f"{self.meal_type.capitalize()}: {self.food_name}"
 
 
 class MealCompletion(models.Model):
@@ -623,12 +627,6 @@ class PreparationSteps(models.Model):
                 self.text_en = translate_text(self.text, 'en')
 
         super(PreparationSteps, self).save(*args, **kwargs)
-
-    class Meta:
-        verbose_name = _("Preparation Step")
-        verbose_name_plural = _("Preparation Steps")
-        ordering = ['step_number']  # Step tartib raqamiga ko‘ra tartiblangan
-
 
     class Meta:
         verbose_name = _("Preparation Step")
