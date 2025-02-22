@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from users_app.models import Program, Session, SessionCompletion, ExerciseBlock
-from exercise.serializers import ProgramSerializer, SessionNestedSerializer
+from exercise.serializers import ProgramSerializer, SessionNestedSerializer, EmptyQuerySerializer
 from django.utils.translation import gettext_lazy as _
 from drf_yasg.utils import swagger_auto_schema
 from exercise.permissions import IsAdminOrReadOnly
@@ -18,7 +18,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
-from swagger_utils import EmptyQuerySerializer  # Import the empty query serializer
+
 
 # ----- Define a manual schema for Session creation -----
 session_create_schema = openapi.Schema(

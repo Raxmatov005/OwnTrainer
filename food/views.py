@@ -11,7 +11,8 @@ from food.serializers import (
     NestedPreparationSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    NestedPreparationStepSerializer
+    NestedPreparationStepSerializer,
+    EmptyQuerySerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
@@ -21,7 +22,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import localdate, now
-from swagger_utils import EmptyQuerySerializer  # Import your empty query serializer
+
 
 translator = Translator()
 
