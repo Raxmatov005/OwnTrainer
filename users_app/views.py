@@ -2,9 +2,7 @@
 from django.contrib.auth import authenticate, login, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from users_app.models import (User, Notification, Program, UserProgram, MealCompletion, Session,
-                              SessionCompletion, ExerciseCompletion, Program, UserProgram, Session,
-                              MealCompletion, SessionCompletion, UserProgram, Session, MealCompletion,
-                              SessionCompletion, ExerciseCompletion)
+                              SessionCompletion)
 
 from .models import Notification
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -33,11 +31,6 @@ from rest_framework.parsers import FormParser, MultiPartParser
 
 from drf_yasg import openapi
 from .eskiz_api import EskizAPI
-from .serializers import (
-    InitialRegisterSerializer,
-    VerifyCodeSerializer,
-    CompleteProfileSerializer
-)
 from rest_framework import views
 from rest_framework import response
 from payme import Payme
