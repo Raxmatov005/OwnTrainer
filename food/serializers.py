@@ -144,7 +144,7 @@ class MealCompletionSerializer(serializers.ModelSerializer):
 # MealDetailSerializer
 # -------------------------------
 class MealDetailSerializer(serializers.ModelSerializer):
-    preparations = PreparationSerializer(many=True, read_only=True)
+    preparations = NestedPreparationSerializer(many=True, read_only=True)
 
     class Meta:
         model = Meal
