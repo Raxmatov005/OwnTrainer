@@ -298,7 +298,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     and for translating fields if missing.
     """
     queryset = Preparation.objects.all()
-    serializer_class = PreparationSerializer
+    serializer_class = NestedPreparationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -316,7 +316,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="List all preparations.",
-        responses={200: PreparationSerializer(many=True)}
+        responses={200: NestedPreparationSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -325,7 +325,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Retrieve a specific preparation by ID.",
-        responses={200: PreparationSerializer()}
+        responses={200: NestedPreparationSerializer()}
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
@@ -334,8 +334,8 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Create a new preparation with automatic translation.",
-        request_body=PreparationSerializer,
-        responses={201: PreparationSerializer()}
+        request_body=NestedPreparationSerializer,
+        responses={201: NestedPreparationSerializer()}
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -344,8 +344,8 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Update an existing preparation completely.",
-        request_body=PreparationSerializer,
-        responses={200: PreparationSerializer()}
+        request_body=NestedPreparationSerializer,
+        responses={200: NestedPreparationSerializer()}
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
@@ -354,8 +354,8 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Partially update a preparation.",
-        request_body=PreparationSerializer,
-        responses={200: PreparationSerializer()}
+        request_body=NestedPreparationSerializer,
+        responses={200: NestedPreparationSerializer()}
     )
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
@@ -382,7 +382,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
                 required=True
             )
         ],
-        responses={200: PreparationSerializer(many=True)}
+        responses={200: NestedPreparationSerializer(many=True)}
     )
     @action(detail=False, methods=['get'], url_path='by-meal')
     def get_by_meal(self, request):
@@ -429,7 +429,7 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     preparation steps. It also supports filtering by 'preparation_id' via a query parameter.
     """
     queryset = PreparationSteps.objects.all()
-    serializer_class = PreparationStepSerializer
+    serializer_class = NestedPreparationStepSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
@@ -454,7 +454,7 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
                 type=openapi.TYPE_INTEGER
             )
         ],
-        responses={200: PreparationStepSerializer(many=True)}
+        responses={200: NestedPreparationStepSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -462,7 +462,7 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Retrieve a specific preparation step by ID",
-        responses={200: PreparationStepSerializer()}
+        responses={200: NestedPreparationStepSerializer()}
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
@@ -470,8 +470,8 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Create a new preparation step",
-        request_body=PreparationStepSerializer,
-        responses={201: PreparationStepSerializer()}
+        request_body=NestedPreparationStepSerializer,
+        responses={201: NestedPreparationStepSerializer()}
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -479,8 +479,8 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Update a preparation step",
-        request_body=PreparationStepSerializer,
-        responses={200: PreparationStepSerializer()}
+        request_body=NestedPreparationStepSerializer,
+        responses={200: NestedPreparationStepSerializer()}
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
@@ -488,8 +488,8 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparation Steps'],
         operation_description="Partially update a preparation step",
-        request_body=PreparationStepSerializer,
-        responses={200: PreparationStepSerializer()}
+        request_body=NestedPreparationStepSerializer,
+        responses={200: NestedPreparationStepSerializer()}
     )
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
