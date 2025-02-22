@@ -10,8 +10,8 @@ from django.db.models import Count, Sum, Q
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from users_app.models import User, UserProgram, SessionCompletion, Session, Meal, Exercise
-from food.serializers import MealSerializer
-from exercise.serializers import ExerciseSerializer
+from food.serializers import MealNestedSerializer
+from exercise.serializers import NestedExerciseSerializer
 from .pagination import AdminPageNumberPagination
 from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
@@ -165,7 +165,7 @@ class AdminContentViewSet(viewsets.ViewSet):
         queryset = self.get_queryset("exercises")
         paginator = self.pagination_class()
         paginated_queryset = paginator.paginate_queryset(queryset, request)
-        serializer = ExerciseSerializer(paginated_queryset, many=True)
+        serializer = NestedExerciseSerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='meals')
@@ -173,7 +173,7 @@ class AdminContentViewSet(viewsets.ViewSet):
         queryset = self.get_queryset("meals")
         paginator = self.pagination_class()
         paginated_queryset = paginator.paginate_queryset(queryset, request)
-        serializer = MealSerializer(paginated_queryset, many=True)
+        serializer = MealNestedSerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='all')
@@ -186,8 +186,8 @@ class AdminContentViewSet(viewsets.ViewSet):
         paginated_meals = paginator.paginate_queryset(queryset_meals, request)
 
         response_data = {
-            "exercises": ExerciseSerializer(paginated_exercises, many=True).data,
-            "meals": MealSerializer(paginated_meals, many=True).data
+            "exercises": NestedExerciseSerializer(paginated_exercises, many=True).data,
+            "meals": MealNestedSerializer(paginated_meals, many=True).data
         }
 
         return paginator.get_paginated_response(response_data)
