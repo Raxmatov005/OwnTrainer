@@ -133,6 +133,11 @@ class MealViewSet(viewsets.ModelViewSet):
             return Meal.objects.filter(sessions__id__in=sessions).distinct()
         return Meal.objects.all()
 
+    def get_parser_classes(self):
+        if self.action == 'create':
+            return [JSONParser]
+        return super().get_parser_classes()
+
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),

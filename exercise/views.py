@@ -194,6 +194,12 @@ class SessionViewSet(viewsets.ModelViewSet):
             return None
         return super().get_serializer(*args, **kwargs)
 
+    # Override parser classes for the create action so that JSONParser is used.
+    def get_parser_classes(self):
+        if self.action == 'create':
+            return [JSONParser]
+        return super().get_parser_classes()
+
     @swagger_auto_schema(
         tags=['Sessions'],
         operation_description=_("Create a new session for a program (with nested exercise block)."),
