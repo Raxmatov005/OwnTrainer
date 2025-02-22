@@ -115,7 +115,7 @@ class SessionNestedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Session
-        fields = ['id', 'program', 'session_number', 'session_time', 'meals', 'block']
+        fields = ['id', 'program', 'session_number', 'meals', 'block']
         extra_kwargs = {
             'session_number': {'read_only': True},
         }
