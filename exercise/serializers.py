@@ -1,8 +1,8 @@
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from users_app.models import (
-    Program, Session, Exercise, WorkoutCategory, UserProgress, Meal,
-    UserProgram, SessionCompletion, ExerciseBlock, ExerciseCompletion
+    Program, Session, Exercise, UserProgress, Meal,
+    UserProgram, SessionCompletion, ExerciseBlock
 )
 from googletrans import Translator
 from datetime import timedelta
@@ -235,14 +235,6 @@ class UserUpdateProgressSerializer(serializers.Serializer):
             raise serializers.ValidationError("Either 'exercise_id' or 'meal_id' must be provided.")
         return data
 
-class StartSessionSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-
-    def validate_session_id(self, value):
-        if not Session.objects.filter(id=value).exists():
-            raise serializers.ValidationError("Berilgan Session ID mavjud emas.")
-        return value
-
 class ProgressRequestSerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=["daily", "weekly"], required=True)
     date = serializers.DateField(required=True)
@@ -279,16 +271,3 @@ class DailySessionCompletionSerializer(serializers.ModelSerializer):
         if hasattr(obj.session, 'cover_image') and obj.session.cover_image:
             return request.build_absolute_uri(obj.session.cover_image.url)
         return None
-
-class SessionStartSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True, help_text="Session ID to start")
-
-@shared_task
-def mark_exercise_as_complete(exercise_completion_id):
-    try:
-        exercise_completion = ExerciseCompletion.objects.get(id=exercise_completion_id)
-        exercise_completion.is_completed = True
-        exercise_completion.completion_date = now().date()
-        exercise_completion.save()
-    except ExerciseCompletion.DoesNotExist:
-        pass
