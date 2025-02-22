@@ -358,7 +358,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         responses={
             200: openapi.Response(
                 description="A list of exercises in the specified category",
-                schema=ExerciseSerializer(many=True)
+                schema=NestedExerciseSerializer(many=True)
             ),
             400: "Category ID is required",
             404: "No exercises found for the given category"
