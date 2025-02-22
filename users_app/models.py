@@ -313,6 +313,49 @@ class SessionCompletion(models.Model):
         return f"{self.user.email_or_phone} - {self.session.program.program_goal} ({status})"
 
 
+
+class Exercise(models.Model):
+    exercise_time = models.DurationField(null=True, blank=True)
+    sequence_number = models.IntegerField(default=1)
+
+    name = models.CharField(max_length=255)
+    name_uz = models.CharField(max_length=255, blank=True, null=True)
+    name_ru = models.CharField(max_length=255, blank=True, null=True)
+    name_en = models.CharField(max_length=255, blank=True, null=True)
+
+    description = models.TextField()
+    description_uz = models.TextField(blank=True, null=True)
+    description_ru = models.TextField(blank=True, null=True)
+    description_en = models.TextField(blank=True, null=True)
+
+
+
+    image = models.ImageField(upload_to='exercise_images/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.name_uz:
+            self.name_uz = translate_text(self.name, 'uz')
+        if not self.name_ru:
+            self.name_ru = translate_text(self.name, 'ru')
+        if not self.name_en:
+            self.name_en = translate_text(self.name, 'en')
+
+        if not self.description_uz:
+            self.description_uz = translate_text(self.description, 'uz')
+        if not self.description_ru:
+            self.description_ru = translate_text(self.description, 'ru')
+        if not self.description_en:
+            self.description_en = translate_text(self.description, 'en')
+
+        super(Exercise, self).save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+
 class ExerciseBlock(models.Model):
     session = models.OneToOneField(
         Session, on_delete=models.CASCADE, related_name='block'
@@ -399,49 +442,6 @@ class ExerciseBlockCompletion(models.Model):
             sc.completion_date = timezone.now().date()
             sc.save()
 
-class Exercise(models.Model):
-    exercise_time = models.DurationField(null=True, blank=True)
-    sequence_number = models.IntegerField(default=1)
-
-    name = models.CharField(max_length=255)
-    name_uz = models.CharField(max_length=255, blank=True, null=True)
-    name_ru = models.CharField(max_length=255, blank=True, null=True)
-    name_en = models.CharField(max_length=255, blank=True, null=True)
-
-    description = models.TextField()
-    description_uz = models.TextField(blank=True, null=True)
-    description_ru = models.TextField(blank=True, null=True)
-    description_en = models.TextField(blank=True, null=True)
-
-
-
-    image = models.ImageField(upload_to='exercise_images/', blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        if not self.name_uz:
-            self.name_uz = translate_text(self.name, 'uz')
-        if not self.name_ru:
-            self.name_ru = translate_text(self.name, 'ru')
-        if not self.name_en:
-            self.name_en = translate_text(self.name, 'en')
-
-        if not self.description_uz:
-            self.description_uz = translate_text(self.description, 'uz')
-        if not self.description_ru:
-            self.description_ru = translate_text(self.description, 'ru')
-        if not self.description_en:
-            self.description_en = translate_text(self.description, 'en')
-
-
-
-
-
-        super(Exercise, self).save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
 
 
 import logging
