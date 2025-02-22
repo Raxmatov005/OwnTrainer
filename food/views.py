@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
-
 from users_app.models import Preparation, Meal, MealCompletion, SessionCompletion, Session, PreparationSteps, UserProgram
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.translation import gettext_lazy as _
@@ -12,39 +11,104 @@ from food.serializers import (
     NestedPreparationSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    NestedPreparationStepSerializer,
-    EmptyQuerySerializer
+    NestedPreparationStepSerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_yasg import openapi
 from django.utils.timezone import localdate, now
-
-
+from swagger_utils import EmptyQuerySerializer  # Import your empty query serializer
 
 translator = Translator()
-
 
 def translate_text(text, target_language):
     try:
         translation = translator.translate(text, dest=target_language)
         return translation.text
     except Exception as e:
-        # If there's an error, return the original text
         print(f"Translation error: {e}")
         return text
 
+# ----- Define a manual schema for Meal creation -----
+manual_meal_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        "food_name": openapi.Schema(type=openapi.TYPE_STRING, description="Food name"),
+        "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time in minutes"),
+        "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
+        "water_content": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water content"),
+        "food_photo": openapi.Schema(type=openapi.TYPE_STRING, description="URL of food photo"),
+        "description": openapi.Schema(type=openapi.TYPE_STRING, description="Description of the meal"),
+        "meal_type": openapi.Schema(type=openapi.TYPE_STRING, description="Meal type (e.g., breakfast, lunch, dinner)"),
+        "preparations": openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "name": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation name"),
+                    "description": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation description"),
+                    "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time in minutes"),
+                    "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories for preparation"),
+                    "water_usage": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water usage"),
+                    "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Video URL"),
+                    "steps": openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "title": openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
+                                "text": openapi.Schema(type=openapi.TYPE_STRING, description="Step text"),
+                                "step_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Step time in seconds")
+                            },
+                            required=["title", "text"]
+                        ),
+                        description="Preparation steps"
+                    )
+                },
+                required=["name", "preparation_time"],
+                description="A nested preparation object"
+            ),
+            description="List of nested preparations"
+        )
+    },
+    required=["food_name", "preparation_time", "calories", "meal_type"],
+    description="Payload for creating a new meal with nested preparations."
+)
+
+# ----- Define a manual schema for Preparation creation -----
+manual_preparation_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        "name": openapi.Schema(type=openapi.TYPE_STRING, description="Name of the preparation"),
+        "description": openapi.Schema(type=openapi.TYPE_STRING, description="Description"),
+        "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time in minutes"),
+        "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
+        "water_usage": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water usage"),
+        "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Video URL"),
+        "steps": openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "title": openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
+                    "text": openapi.Schema(type=openapi.TYPE_STRING, description="Step text"),
+                    "step_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Step time in seconds")
+                },
+                required=["title", "text"],
+                description="A preparation step"
+            ),
+            description="List of preparation steps"
+        )
+    },
+    required=["name", "preparation_time"],
+    description="Payload for creating a new preparation."
+)
 
 class MealViewSet(viewsets.ModelViewSet):
-    """
-    This viewset manages Meal objects using a unified nested serializer.
-    It allows creating a Meal along with its nested Preparations (and optionally PreparationSteps)
-    in a single request.
-    """
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
     permission_classes = [IsAuthenticated]
@@ -55,39 +119,26 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language}
 
     def get_queryset(self):
-        # For Swagger schema generation, return an empty queryset
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
-
-        # Check authentication (if not authenticated, permission will be denied)
         if not self.request.user.is_authenticated:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Authentication is required to view meals.")
-
-        # Retrieve the user's active program
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
             return Meal.objects.none()
-
-        # Check subscription status; if inactive, return empty queryset
         if not user_program.is_subscription_active():
             return Meal.objects.none()
-
-        # For non-admin users, return only the meals linked to their sessions
         if not self.request.user.is_staff:
             from users_app.models import SessionCompletion
             sessions = SessionCompletion.objects.filter(user=self.request.user).values_list('session_id', flat=True)
             return Meal.objects.filter(sessions__id__in=sessions).distinct()
-
-        # For admin users, return all meals
         return Meal.objects.all()
 
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
         responses={200: MealNestedSerializer(many=True)},
-        query_serializer = EmptyQuerySerializer()
-
+        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -108,7 +159,7 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Create a new meal with nested preparations"),
-        request_body=MealNestedSerializer,
+        request_body=manual_meal_schema,
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
@@ -165,24 +216,18 @@ class MealViewSet(viewsets.ModelViewSet):
         meal.delete()
         return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
+
 class MealCompletionViewSet(viewsets.ModelViewSet):
-    """
-    This viewset manages MealCompletion records for the authenticated user.
-    It provides endpoints to list, retrieve, create, update, partially update,
-    and delete meal completion records.
-    """
     queryset = MealCompletion.objects.all()
     serializer_class = MealCompletionSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # For Swagger or if the user is not authenticated, return an empty queryset.
         if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
             return MealCompletion.objects.none()
         return MealCompletion.objects.filter(user=self.request.user)
 
     def get_serializer_context(self):
-        # Pass the current user's language to the serializer.
         language = self.request.query_params.get('lang', 'en')
         return {**super().get_serializer_context(), "language": language}
 
@@ -217,33 +262,19 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             user = request.user
-            # Check active subscription for the user.
             user_program = UserProgram.objects.filter(user=user, is_active=True).first()
             if not user_program or not user_program.is_subscription_active():
-                return Response(
-                    {"error": "Your subscription has ended. Please renew."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            # Validate that the session and meal exist.
+                return Response({"error": "Your subscription has ended. Please renew."}, status=status.HTTP_403_FORBIDDEN)
             session = serializer.validated_data.get('session')
             meal = serializer.validated_data.get('meal')
             if not Session.objects.filter(id=session.id).exists():
-                return Response(
-                    {"error": "Invalid session ID."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "Invalid session ID."}, status=status.HTTP_400_BAD_REQUEST)
             if not Meal.objects.filter(id=meal.id).exists():
-                return Response(
-                    {"error": "Invalid meal ID."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            # Save the meal completion record.
+                return Response({"error": "Invalid meal ID."}, status=status.HTTP_400_BAD_REQUEST)
             meal_completion = serializer.save(user=user)
             return Response({
                 "message": "Meal completion recorded successfully",
-                "meal_completion": MealCompletionSerializer(
-                    meal_completion, context={"language": request.user.language}
-                ).data,
+                "meal_completion": MealCompletionSerializer(meal_completion, context={"language": request.user.language}).data,
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -258,10 +289,7 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal_completion, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                "message": "Meal completion updated successfully",
-                "meal_completion": serializer.data
-            })
+            return Response({"message": "Meal completion updated successfully", "meal_completion": serializer.data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -275,10 +303,7 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal_completion, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({
-                "message": "Meal completion record partially updated successfully",
-                "meal_completion": serializer.data
-            })
+            return Response({"message": "Meal completion record partially updated successfully", "meal_completion": serializer.data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -289,19 +314,10 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
     def destroy(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         meal_completion.delete()
-        return Response(
-            {"message": "Meal completion record deleted successfully"},
-            status=status.HTTP_204_NO_CONTENT
-        )
+        return Response({"message": "Meal completion record deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
 
 class PreparationViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing Preparation objects.
-    This endpoint supports listing, retrieving, creating, updating,
-    and deleting preparations, along with custom endpoints for filtering by meal_id
-    and for translating fields if missing.
-    """
     queryset = Preparation.objects.all()
     serializer_class = NestedPreparationSerializer
     permission_classes = [IsAuthenticated]
@@ -317,7 +333,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         context['language'] = getattr(self.request.user, 'language', 'en')
         return context
 
-    # --- List ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="List all preparations.",
@@ -327,7 +342,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    # --- Retrieve ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Retrieve a specific preparation by ID.",
@@ -336,17 +350,15 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    # --- Create ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Create a new preparation with automatic translation.",
-        request_body=NestedPreparationSerializer,
+        request_body=manual_preparation_schema,
         responses={201: NestedPreparationSerializer()}
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    # --- Update (PUT) ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Update an existing preparation completely.",
@@ -356,7 +368,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    # --- Partial Update (PATCH) ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Partially update a preparation.",
@@ -366,7 +377,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
-    # --- Destroy ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Delete a preparation by ID.",
@@ -375,7 +385,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    # --- Custom Endpoint: Filter by Meal ID ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Filter preparations by meal ID.",
@@ -399,7 +408,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(preparations, many=True)
         return Response({"preparations": serializer.data}, status=status.HTTP_200_OK)
 
-    # --- Custom Endpoint: Translate Fields ---
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="Translate preparation fields into multiple languages if missing.",
@@ -428,12 +436,9 @@ class PreparationViewSet(viewsets.ModelViewSet):
             preparation.description_en = translate_text(preparation.description, 'en')
         preparation.save()
         return Response({"message": _("Fields translated successfully.")}, status=status.HTTP_200_OK)
+
+
 class PreparationStepViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for managing PreparationSteps.
-    This endpoint allows listing, retrieving, creating, updating, and deleting
-    preparation steps. It also supports filtering by 'preparation_id' via a query parameter.
-    """
     queryset = PreparationSteps.objects.all()
     serializer_class = NestedPreparationStepSerializer
     permission_classes = [IsAuthenticated]
@@ -509,6 +514,7 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
+
 class CompleteMealView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -524,73 +530,38 @@ class CompleteMealView(APIView):
         if serializer.is_valid():
             session_id = serializer.validated_data.get('session_id')
             meal_id = serializer.validated_data.get('meal_id')
-
-            # Check if the user has an active subscription
             user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
             if not user_program or not user_program.is_subscription_active():
                 return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-
-            # Look up the MealCompletion record for this session and meal
             meal_completion = MealCompletion.objects.filter(
                 session_id=session_id,
                 meal_id=meal_id,
                 user=request.user
             ).first()
-
             if not meal_completion:
                 return Response({"error": _("Session and Meal combination not found.")}, status=404)
-
             if meal_completion.is_completed:
                 return Response({"message": _("This meal has already been completed.")}, status=200)
-
-            # Mark the meal as completed and set the completion date
             meal_completion.is_completed = True
             meal_completion.completion_date = now().date()
             meal_completion.save()
-
             return Response({"message": _("Meal completed successfully.")}, status=200)
-
         return Response(serializer.errors, status=400)
 
 
-
-
-
 class UserDailyMealsView(APIView):
-    """
-    This view returns all meals for today's sessions for the authenticated user.
-    It checks the user's active program and subscription.
-
-    It uses MealDetailSerializer which is expected to return detailed meal info,
-    including nested preparations and translations.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Get today's date
         today = localdate()
         user = request.user
-
-        # Check if the user has an active program and subscription
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-
-        # Retrieve today's session completions for the user
-        user_sessions = SessionCompletion.objects.filter(
-            user=user,
-            session_date=today
-        ).values_list('session_id', flat=True)  # Retrieve only session IDs
-
-        # Retrieve meals linked to those sessions
+        user_sessions = SessionCompletion.objects.filter(user=user, session_date=today).values_list('session_id', flat=True)
         meals = Meal.objects.filter(sessions__id__in=user_sessions).distinct()
-
-        # If no meals found, return a message
         if not meals.exists():
             return Response({"message": _("No meals found for today.")}, status=404)
-
-        # Serialize the meal data using MealDetailSerializer;
-        # this serializer should return detailed info including nested preparations.
         serializer = MealDetailSerializer(meals, many=True, context={"language": getattr(user, 'language', 'en')})
         return Response({"meals": serializer.data}, status=200)
 
@@ -599,12 +570,8 @@ class MealDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, meal_id):
-        # Retrieve the meal along with its nested preparations and steps
         meal = Meal.objects.prefetch_related('preparations', 'preparations__steps').filter(id=meal_id).first()
         if not meal:
             return Response({"error": _("Meal not found.")}, status=404)
-        # Use the user's language (defaulting to 'en' if not set)
         serializer = MealDetailSerializer(meal, context={"language": getattr(request.user, 'language', 'en')})
         return Response(serializer.data, status=200)
-
-

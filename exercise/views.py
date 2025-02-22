@@ -1,6 +1,6 @@
-from rest_framework import viewsets,status
-from users_app.models import *
-from exercise.serializers import *
+from rest_framework import viewsets, status
+from users_app.models import Program, Session, SessionCompletion, ExerciseBlock
+from exercise.serializers import ProgramSerializer, SessionNestedSerializer
 from django.utils.translation import gettext_lazy as _
 from drf_yasg.utils import swagger_auto_schema
 from exercise.permissions import IsAdminOrReadOnly
@@ -18,14 +18,100 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
+from swagger_utils import EmptyQuerySerializer  # Import the empty query serializer
 
-
-
+# ----- Define a manual schema for Session creation -----
+session_create_schema = openapi.Schema(
+    type=openapi.TYPE_OBJECT,
+    properties={
+        "program": openapi.Schema(
+            type=openapi.TYPE_INTEGER,
+            description="ID of the Program"
+        ),
+        "meals": openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(type=openapi.TYPE_INTEGER),
+            description="List of Meal IDs (optional)"
+        ),
+        "block": openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "block_name": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Name of the exercise block"
+                ),
+                "block_image": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="URL for the block image"
+                ),
+                "block_kkal": openapi.Schema(
+                    type=openapi.TYPE_NUMBER,
+                    description="Calories associated with the block"
+                ),
+                "block_water_amount": openapi.Schema(
+                    type=openapi.TYPE_NUMBER,
+                    description="Water amount for the block"
+                ),
+                "description": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Description of the block"
+                ),
+                "video_url": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Video URL for the block"
+                ),
+                "block_time": openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="Duration of the block (in seconds)"
+                ),
+                "calories_burned": openapi.Schema(
+                    type=openapi.TYPE_NUMBER,
+                    description="Calories burned during the block"
+                ),
+                "exercises": openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            "name": openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Name of the exercise"
+                            ),
+                            "sequence_number": openapi.Schema(
+                                type=openapi.TYPE_INTEGER,
+                                description="Sequence number of the exercise"
+                            ),
+                            "exercise_time": openapi.Schema(
+                                type=openapi.TYPE_INTEGER,
+                                description="Duration of the exercise in seconds"
+                            ),
+                            "description": openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Description of the exercise"
+                            ),
+                            "image": openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Image URL for the exercise"
+                            ),
+                        },
+                        required=["name", "sequence_number", "exercise_time"],
+                        description="An exercise within the block"
+                    ),
+                    description="List of nested exercises"
+                ),
+            },
+            required=["block_name", "exercises"],
+            description="Data for the nested exercise block"
+        ),
+    },
+    required=["program", "block"],
+    description="Payload for creating a new session with a nested exercise block."
+)
 
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
-    permission_classes = [IsAuthenticated,IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -36,7 +122,6 @@ class ProgramViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if self.request.user.is_superuser:
             return Program.objects.all()
-        # Filter programs by 'is_active' and match the user's goal
         user_goal = getattr(self.request.user, 'goal', None)
         return Program.objects.filter(is_active=True, program_goal=user_goal)
 
@@ -57,7 +142,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         language = request.user.language
         if serializer.is_valid():
-            program = serializer.save()
+            serializer.save()
             message = translate_text("Program created successfully", language)
             return Response({"message": message, "program": serializer.data})
         return Response(serializer.errors, status=400)
@@ -95,16 +180,9 @@ class ProgramViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-
-
 class SessionViewSet(viewsets.ModelViewSet):
     """
     Updated Session view.
-
-    - Each Session is linked to a Program (passed in via 'program').
-    - When a session is created, the serializer auto-creates an ExerciseBlock (with nested exercises)
-      and links it to the Session.
-    - Fields like cover_image and calories_burned have been removed from Session.
     """
     queryset = Session.objects.all()
     serializer_class = SessionNestedSerializer
@@ -118,20 +196,19 @@ class SessionViewSet(viewsets.ModelViewSet):
         return context
 
     def get_serializer(self, *args, **kwargs):
-        # For actions like 'reset_today_session', you may bypass the serializer.
         if self.action == 'reset_today_session':
             return None
         return super().get_serializer(*args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Sessions'],
-        operation_description=_("Create a new session for a program (with nested exercise block).")
+        operation_description=_("Create a new session for a program (with nested exercise block)."),
+        request_body=session_create_schema
     )
     def create(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({"error": _("You do not have permission to create a session.")},
                             status=status.HTTP_403_FORBIDDEN)
-        # Ensure program_id is provided.
         program_id = request.data.get('program')
         if not program_id:
             return Response({"error": _("Program ID is required to create a session.")},
@@ -204,25 +281,20 @@ class SessionViewSet(viewsets.ModelViewSet):
         query_serializer=EmptyQuerySerializer()
     )
     def list(self, request):
-        # Check subscription status (if not active, return an error)
-        from users_app.models import UserSubscription
+        from users_app.models import UserSubscription, UserProgram
         user_subscription = UserSubscription.objects.filter(user=request.user, is_active=True).first()
         if not user_subscription or not user_subscription.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-        from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
             return Response({"error": _("No active program found for the user.")}, status=404)
-
         incomplete_sc = SessionCompletion.objects.filter(
             user=request.user,
             session__program=user_program.program,
             is_completed=False
         ).select_related('session').order_by('session__session_number')
-
         if not incomplete_sc.exists():
             return Response({"message": _("You have completed all sessions!")}, status=200)
-
         next_sc = incomplete_sc.first()
         next_session_number = next_sc.session.session_number
         session_ids = [sc.session_id for sc in incomplete_sc]
@@ -314,6 +386,7 @@ class CompleteBlockView(APIView):
         if not block_id:
             return Response({"error": _("block_id is required.")}, status=400)
         block = get_object_or_404(ExerciseBlock, id=block_id)
+        from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not request.user.is_staff:
             if not user_program or not user_program.is_subscription_active():
@@ -322,36 +395,40 @@ class CompleteBlockView(APIView):
         if bc.is_completed:
             return Response({"message": _("Block already completed.")}, status=200)
         bc.is_completed = True
-        bc.save()  # triggers session completion via model logic
+        bc.save()
         return Response({"message": _("Block completed successfully.")}, status=200)
+
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
     serializer_class = NestedExerciseSerializer
-    permission_classes = [IsAuthenticated,IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get_user_language(self):
         return getattr(self.request.user, 'language', 'en')
 
-    @swagger_auto_schema(tags=['Exercises'], operation_description=_("List exercises for a specific session"), query_serializer=EmptyQuerySerializer())
+    @swagger_auto_schema(
+        tags=['Exercises'],
+        operation_description=_("List exercises for a specific session"),
+        query_serializer=EmptyQuerySerializer()
+    )
     def list(self, request):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication credentials were not provided."}, status=403)
-        session_id = request.query_params.get('session_id')  # `session_id` parametrini oladi
+        session_id = request.query_params.get('session_id')
         queryset = self.get_queryset().filter(sessions__id=session_id) if session_id else self.get_queryset()
         if not request.user.is_superuser:
-            queryset = queryset.filter(
-                sessions__program__is_active=True)  # Foydalanuvchi uchun faqat aktiv dasturlarni ko'rsatish
+            queryset = queryset.filter(sessions__program__is_active=True)
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
-
 
     @swagger_auto_schema(
         tags=['Exercises'],
         operation_description=_("Retrieve exercises by category ID"),
         manual_parameters=[
             openapi.Parameter(
-                'category_id', openapi.IN_QUERY,
+                'category_id',
+                openapi.IN_QUERY,
                 description="ID of the category to filter exercises by",
                 type=openapi.TYPE_INTEGER,
                 required=True
@@ -369,23 +446,17 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=['get'], url_path='by-category')
     def by_category(self, request):
-        """
-        Custom endpoint to get exercises filtered by category ID.
-        """
         language = self.get_user_language()
         category_id = request.query_params.get('category_id')
         if not category_id:
             message = translate_text("Category ID is required.", language)
             return Response({"error": message}, status=400)
-
         queryset = self.get_queryset().filter(category_id=category_id)
         if not queryset.exists():
             message = translate_text("No exercises found for the given category.", language)
             return Response({"message": message}, status=404)
-
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
-
 
     @swagger_auto_schema(tags=['Exercises'], operation_description=_("Retrieve exercise by ID"))
     def retrieve(self, request, pk=None):
@@ -446,10 +517,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-
-
-
-
 class UserProgramViewSet(viewsets.ModelViewSet):
     queryset = UserProgram.objects.all()
     serializer_class = UserProgramSerializer
@@ -484,30 +551,24 @@ class UserProgramViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['User Programs'],
         operation_description=_("Create a new user program"),
-        request_body=UserProgramCreateSerializer,  # Explicitly specify the correct serializer
+        request_body=UserProgramCreateSerializer,
         responses={201: openapi.Response(description="User program created", schema=UserProgramSerializer)}
     )
     def create(self, request):
         language = self.get_user_language()
-
         program_id = request.data.get("program")
         if not program_id:
             return Response({"error": "program_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
             program = Program.objects.get(id=program_id, is_active=True)
         except Program.DoesNotExist:
             return Response({"error": "Invalid or inactive program_id."}, status=status.HTTP_404_NOT_FOUND)
-
         create_serializer = UserProgramCreateSerializer(data=request.data)
         if create_serializer.is_valid():
-            # ✅ Save program selection but **DO NOT CREATE SESSIONS YET**
             user_program = create_serializer.save(user=request.user, program=program)
-
             message = "Program selected. Complete payment to access sessions."
             return Response({"message": message, "user_program": create_serializer.data},
                             status=status.HTTP_201_CREATED)
-
         return Response(create_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -517,32 +578,22 @@ class UserProgramViewSet(viewsets.ModelViewSet):
     def update(self, request, pk=None):
         language = self.get_user_language()
         user_program = self.get_object()
-
         if user_program.user != request.user:
             message = translate_text("You do not have permission to update this user program.", language)
             return Response({"error": message}, status=status.HTTP_403_FORBIDDEN)
-
         serializer = self.get_serializer(user_program, data=request.data, partial=True)
         if serializer.is_valid():
-            # Detect if subscription is being renewed (e.g., `is_paid` was False, now True)
             was_unpaid = not user_program.is_paid
             is_now_paid = serializer.validated_data.get("is_paid", user_program.is_paid)
-
-            # Extend end_date if necessary (if user is renewing)
             new_end_date = serializer.validated_data.get("end_date")
             if new_end_date and new_end_date > user_program.end_date:
                 user_program.end_date = new_end_date
-
             serializer.save()
-
-            # 🚀 Just update the subscription—do NOT recreate any sessions
             if was_unpaid and is_now_paid:
                 message = translate_text("Subscription renewed successfully.", language)
             else:
                 message = translate_text("User program updated successfully", language)
-
             return Response({"message": message, "user_program": serializer.data})
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -577,29 +628,20 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-
 class UserFullProgramDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         try:
-            # Fetch the user's active program
             user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
             if not user_program:
-                return Response(
-                    {"error": "Foydalanuvchining faol dasturi topilmadi."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
+                return Response({"error": "Foydalanuvchining faol dasturi topilmadi."},
+                                status=status.HTTP_404_NOT_FOUND)
             if not user_program.is_subscription_active():
                 return Response({"error": "Your subscription has ended. Please renew."}, status=403)
-
-            # Fetch all sessions for the program
             sessions = Session.objects.filter(program=user_program.program).prefetch_related(
                 'exercises', 'meals__preparations'
             )
-
-            # Prepare response data
             response_data = {
                 "program": {
                     "id": user_program.program.id,
@@ -652,24 +694,17 @@ class UserFullProgramDetailView(APIView):
                     for session in sessions
                 ],
             }
-
             return Response(response_data, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response(
-                {"error": f"Xato yuz berdi: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": f"Xato yuz berdi: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _is_session_completed(self, user, session):
-        """Helper method to check if a session is completed."""
         completion = SessionCompletion.objects.filter(user=user, session=session).first()
         return completion.is_completed if completion else False
 
     def _is_meal_completed(self, user, session, meal):
-        """Helper method to check if a meal is completed."""
-        meal_completion = MealCompletion.objects.filter(
-            user=user, session=session, meal=meal
-        ).first()
+        meal_completion = MealCompletion.objects.filter(user=user, session=session, meal=meal).first()
         return meal_completion.is_completed if meal_completion else False
 
 
@@ -725,72 +760,46 @@ class ProgressView(APIView):
     def post(self, request):
         query_type = request.data.get("type")
         date_str = request.data.get("date")
-
-        # Validate query_type
         if query_type not in ["daily", "weekly", "monthly"]:
-            return Response(
-                {"error": "Invalid type. Expected 'daily' or 'weekly' or 'monthly'."},
-                status=400,
-            )
-
-        # Validate and parse date
+            return Response({"error": "Invalid type. Expected 'daily' or 'weekly' or 'monthly'."},
+                            status=400)
         try:
             date = parse_date(date_str)
             if not date:
                 raise ValueError
         except ValueError:
-            return Response(
-                {"error": "Invalid date format. Expected 'YYYY-MM-DD'."},
-                status=400,
-            )
-
-        # Calculate progress based on query_type
+            return Response({"error": "Invalid date format. Expected 'YYYY-MM-DD'."},
+                            status=400)
         if query_type == "daily":
             progress = self.calculate_daily_progress(request.user, date)
         elif query_type == "weekly":
             progress = self.calculate_weekly_progress(request.user, date)
         elif query_type == "monthly":
             progress = self.calculate_monthly_progress(request.user, date)
-
         return Response(progress, status=200)
 
     def calculate_daily_progress(self, user, date):
-        completed_sessions = SessionCompletion.objects.filter(
-            user=user,
-            session_date=date,
-        )
-        sessions = [
-            {
-                "id": session.session.id,
-                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(session.session, 'block') else 0.0,
-                "status": "completed" if session.is_completed else "missed"
-            }
-            for session in completed_sessions
-        ]
-
-        completed_meals = MealCompletion.objects.filter(
-            user=user,
-            meal_date=date,
-        )
-        meals = [
-            {
-                "id": meal.meal.id,
-                "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-                "status": "completed" if meal.is_completed else "missed"
-            }
-            for meal in completed_meals
-        ]
-
-        total_calories_burned = sum(session["calories_burned"] for session in sessions)
-        total_calories_gained = sum(meal["calories"] for meal in meals)
-
+        completed_sessions = SessionCompletion.objects.filter(user=user, session_date=date)
+        sessions = [{
+            "id": session.session.id,
+            "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(session.session, 'block') else 0.0,
+            "status": "completed" if session.is_completed else "missed"
+        } for session in completed_sessions]
+        completed_meals = MealCompletion.objects.filter(user=user, meal_date=date)
+        meals = [{
+            "id": meal.meal.id,
+            "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
+            "status": "completed" if meal.is_completed else "missed"
+        } for meal in completed_meals]
+        total_calories_burned = sum(s["calories_burned"] for s in sessions)
+        total_calories_gained = sum(m["calories"] for m in meals)
         return {
             "date": str(date),
-            "completed_sessions_count": sum(1 for session in sessions if session["status"] == "completed"),
-            "missed_sessions_count": sum(1 for session in sessions if session["status"] == "missed"),
+            "completed_sessions_count": sum(1 for s in sessions if s["status"] == "completed"),
+            "missed_sessions_count": sum(1 for s in sessions if s["status"] == "missed"),
             "total_calories_burned": total_calories_burned,
-            "completed_meals_count": sum(1 for meal in meals if meal["status"] == "completed"),
-            "missed_meals_count": sum(1 for meal in meals if meal["status"] == "missed"),
+            "completed_meals_count": sum(1 for m in meals if m["status"] == "completed"),
+            "missed_meals_count": sum(1 for m in meals if m["status"] == "missed"),
             "calories_gained": total_calories_gained,
             "sessions": sessions,
             "meals": meals,
@@ -799,111 +808,60 @@ class ProgressView(APIView):
     def calculate_weekly_progress(self, user, date):
         week_start = date - timedelta(days=date.weekday())
         week_end = week_start + timedelta(days=6)
-
-        completed_sessions = SessionCompletion.objects.filter(
-            user=user,
-            session_date__range=(week_start, week_end),
-        )
-        sessions = [
-            {
-                "id": session.session.id,
-                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(
-                    session.session, 'block') else 0.0,
-                "status": "completed" if session.is_completed else "missed"
-            }
-            for session in completed_sessions
-        ]
-
-        completed_meals = MealCompletion.objects.filter(
-            user=user,
-            meal_date__range=(week_start, week_end),
-        )
-        meals = [
-            {
-                "id": meal.meal.id,
-                "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-                "status": "completed" if meal.is_completed else "missed"
-            }
-            for meal in completed_meals
-        ]
-
-        total_calories_burned = sum(session["calories_burned"] for session in sessions)
-        total_calories_gained = sum(meal["calories"] for meal in meals)
-
+        completed_sessions = SessionCompletion.objects.filter(user=user, session_date__range=(week_start, week_end))
+        sessions = [{
+            "id": session.session.id,
+            "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(session.session, 'block') else 0.0,
+            "status": "completed" if session.is_completed else "missed"
+        } for session in completed_sessions]
+        completed_meals = MealCompletion.objects.filter(user=user, meal_date__range=(week_start, week_end))
+        meals = [{
+            "id": meal.meal.id,
+            "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
+            "status": "completed" if meal.is_completed else "missed"
+        } for meal in completed_meals]
+        total_calories_burned = sum(s["calories_burned"] for s in sessions)
+        total_calories_gained = sum(m["calories"] for m in meals)
         return {
             "week_start_date": str(week_start),
             "week_end_date": str(week_end),
-            "completed_sessions_count": sum(1 for session in sessions if session["status"] == "completed"),
-            "missed_sessions_count": sum(1 for session in sessions if session["status"] == "missed"),
+            "completed_sessions_count": sum(1 for s in sessions if s["status"] == "completed"),
+            "missed_sessions_count": sum(1 for s in sessions if s["status"] == "missed"),
             "total_calories_burned": total_calories_burned,
-            "completed_meals_count": sum(1 for meal in meals if meal["status"] == "completed"),
-            "missed_meals_count": sum(1 for meal in meals if meal["status"] == "missed"),
+            "completed_meals_count": sum(1 for m in meals if m["status"] == "completed"),
+            "missed_meals_count": sum(1 for m in meals if m["status"] == "missed"),
             "calories_gained": total_calories_gained,
             "sessions": sessions,
             "meals": meals,
         }
+
     def calculate_monthly_progress(self, user, date):
-        # Calculate month start and end dates
         month_start = date.replace(day=1)
-        next_month = month_start.replace(day=28) + timedelta(days=4)  # Ensures we jump to next month
+        next_month = month_start.replace(day=28) + timedelta(days=4)
         month_end = next_month - timedelta(days=next_month.day)
-
-        completed_sessions = SessionCompletion.objects.filter(
-            user=user,
-            session_date__range=(month_start, month_end),
-        )
-        sessions = [
-            {
-                "id": session.session.id,
-                "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(
-                    session.session, 'block') else 0.0,
-                "status": "completed" if session.is_completed else "missed"
-            }
-            for session in completed_sessions
-        ]
-
-        completed_meals = MealCompletion.objects.filter(
-            user=user,
-            meal_date__range=(month_start, month_end),
-        )
-        meals = [
-            {
-                "id": meal.meal.id,
-                "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-                "status": "completed" if meal.is_completed else "missed"
-            }
-            for meal in completed_meals
-        ]
-
-        total_calories_burned = sum(session["calories_burned"] for session in sessions)
-        total_calories_gained = sum(meal["calories"] for meal in meals)
-
+        completed_sessions = SessionCompletion.objects.filter(user=user, session_date__range=(month_start, month_end))
+        sessions = [{
+            "id": session.session.id,
+            "calories_burned": float(session.session.block.calories_burned) if session.is_completed and hasattr(session.session, 'block') else 0.0,
+            "status": "completed" if session.is_completed else "missed"
+        } for session in completed_sessions]
+        completed_meals = MealCompletion.objects.filter(user=user, meal_date__range=(month_start, month_end))
+        meals = [{
+            "id": meal.meal.id,
+            "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
+            "status": "completed" if meal.is_completed else "missed"
+        } for meal in completed_meals]
+        total_calories_burned = sum(s["calories_burned"] for s in sessions)
+        total_calories_gained = sum(m["calories"] for m in meals)
         return {
             "month_start_date": str(month_start),
             "month_end_date": str(month_end),
-            "completed_sessions_count": sum(1 for session in sessions if session["status"] == "completed"),
-            "missed_sessions_count": sum(1 for session in sessions if session["status"] == "missed"),
+            "completed_sessions_count": sum(1 for s in sessions if s["status"] == "completed"),
+            "missed_sessions_count": sum(1 for s in sessions if s["status"] == "missed"),
             "total_calories_burned": total_calories_burned,
-            "completed_meals_count": sum(1 for meal in meals if meal["status"] == "completed"),
-            "missed_meals_count": sum(1 for meal in meals if meal["status"] == "missed"),
+            "completed_meals_count": sum(1 for m in meals if m["status"] == "completed"),
+            "missed_meals_count": sum(1 for m in meals if m["status"] == "missed"),
             "calories_gained": total_calories_gained,
             "sessions": sessions,
             "meals": meals,
         }
-
-
-class DailySessionCompletionView(APIView):
-    """
-    Retrieve session completion details, including meals, by session ID for a user.
-    """
-    def get(self, request, session_id):
-        # Foydalanuvchi uchun SessionCompletion-ni tekshirish
-        session_completion = get_object_or_404(
-            SessionCompletion, session__id=session_id, user=request.user
-        )
-
-        # Serializatsiya qilish
-        serializer = DailySessionCompletionSerializer(session_completion, context={'request': request})
-
-        # Ma'lumotlarni qaytarish
-        return Response(serializer.data, status=status.HTTP_200_OK)
