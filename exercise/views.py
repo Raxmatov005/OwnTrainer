@@ -325,7 +325,7 @@ class CompleteBlockView(APIView):
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
-    serializer_class = ExerciseSerializer
+    serializer_class = NestedExerciseSerializer
     permission_classes = [IsAuthenticated,IsAdminOrReadOnly]
 
     def get_user_language(self):
