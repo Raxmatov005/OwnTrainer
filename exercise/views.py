@@ -250,7 +250,8 @@ class SessionViewSet(viewsets.ModelViewSet):
             200: SessionNestedSerializer(),
             400: "session_number is required.",
             404: "Session not found or no active program."
-        }
+        },
+        query_serializer=EmptyQuerySerializer()
     )
     @action(detail=False, methods=['get'], url_path='by-session-number')
     def get_by_session_number(self, request):
@@ -363,7 +364,8 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             ),
             400: "Category ID is required",
             404: "No exercises found for the given category"
-        }
+        },
+        query_serializer=EmptyQuerySerializer()
     )
     @action(detail=False, methods=['get'], url_path='by-category')
     def by_category(self, request):

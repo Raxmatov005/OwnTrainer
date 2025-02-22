@@ -97,7 +97,8 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Retrieve a specific meal"),
-        responses={200: MealNestedSerializer()}
+        responses={200: MealNestedSerializer()},
+        query_serializer=EmptyQuerySerializer()
     )
     def retrieve(self, request, pk=None):
         meal = self.get_object()
