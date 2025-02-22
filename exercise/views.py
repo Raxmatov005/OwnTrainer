@@ -20,7 +20,6 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 
 
-# ----- Define a manual schema for Session creation -----
 session_create_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     properties={
@@ -107,7 +106,6 @@ session_create_schema = openapi.Schema(
     required=["program", "block"],
     description="Payload for creating a new session with a nested exercise block."
 )
-
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
@@ -179,11 +177,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
         message = translate_text("Program deleted successfully", request.user.language)
         return Response({"message": message})
 
-
 class SessionViewSet(viewsets.ModelViewSet):
-    """
-    Updated Session view.
-    """
     queryset = Session.objects.all()
     serializer_class = SessionNestedSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
@@ -203,7 +197,8 @@ class SessionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Sessions'],
         operation_description=_("Create a new session for a program (with nested exercise block)."),
-        request_body=session_create_schema
+        request_body=session_create_schema,
+        consumes=['application/json']  # Force JSON consumption in docs
     )
     def create(self, request, *args, **kwargs):
         if not request.user.is_superuser:
@@ -330,16 +325,14 @@ class SessionViewSet(viewsets.ModelViewSet):
         from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
-            return Response({"error": _("No active program found for the logged-in user.")},
-                            status=404)
+            return Response({"error": _("No active program found for the logged-in user.")}, status=404)
         session_number = request.query_params.get('session_number')
         if not session_number:
             return Response({"error": "session_number is required."}, status=400)
         try:
             session = Session.objects.get(program=user_program.program, session_number=session_number)
         except Session.DoesNotExist:
-            return Response({"error": "Session not found for the given session_number in the user's program."},
-                            status=404)
+            return Response({"error": "Session not found for the given session_number in the user's program."}, status=404)
         serializer = self.get_serializer(session)
         return Response(serializer.data, status=200)
 
@@ -354,17 +347,13 @@ class SessionViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='reset-today-session', permission_classes=[IsAuthenticated])
     def reset_today_session(self, request):
         from users_app.models import SessionCompletion
-        today_sc = SessionCompletion.objects.filter(
-            user=request.user,
-            session_date=now().date()
-        ).first()
+        today_sc = SessionCompletion.objects.filter(user=request.user, session_date=now().date()).first()
         if not today_sc:
             return Response({"error": _("No session found for today.")}, status=404)
         today_sc.is_completed = False
         today_sc.completion_date = None
         today_sc.save()
         return Response({"message": _("Today's session has been reset successfully.")}, status=200)
-
 
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]

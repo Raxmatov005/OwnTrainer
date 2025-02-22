@@ -11,8 +11,7 @@ from food.serializers import (
     NestedPreparationSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    NestedPreparationStepSerializer,
-    EmptyQuerySerializer
+    NestedPreparationStepSerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
@@ -22,7 +21,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import localdate, now
-
+from swagger_utils import EmptyQuerySerializer
 
 translator = Translator()
 
@@ -33,8 +32,7 @@ def translate_text(text, target_language):
     except Exception as e:
         print(f"Translation error: {e}")
         return text
-
-# ----- Define a manual schema for Meal creation -----
+# ----- Manual schema for Meal creation -----
 manual_meal_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     properties={
@@ -80,7 +78,7 @@ manual_meal_schema = openapi.Schema(
     description="Payload for creating a new meal with nested preparations."
 )
 
-# ----- Define a manual schema for Preparation creation -----
+# ----- Manual schema for Preparation creation -----
 manual_preparation_schema = openapi.Schema(
     type=openapi.TYPE_OBJECT,
     properties={
@@ -108,7 +106,6 @@ manual_preparation_schema = openapi.Schema(
     required=["name", "preparation_time"],
     description="Payload for creating a new preparation."
 )
-
 class MealViewSet(viewsets.ModelViewSet):
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
@@ -161,6 +158,7 @@ class MealViewSet(viewsets.ModelViewSet):
         tags=['Meals'],
         operation_description=_("Create a new meal with nested preparations"),
         request_body=manual_meal_schema,
+        consumes=['application/json'],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
@@ -257,6 +255,7 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         tags=['Meal Completions'],
         operation_description="Create a new meal completion",
         request_body=CompleteMealSerializer,
+        consumes=['application/json'],
         responses={201: MealCompletionSerializer()}
     )
     def create(self, request, *args, **kwargs):
@@ -355,6 +354,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
         tags=['Preparations'],
         operation_description="Create a new preparation with automatic translation.",
         request_body=manual_preparation_schema,
+        consumes=['application/json'],
         responses={201: NestedPreparationSerializer()}
     )
     def create(self, request, *args, **kwargs):
@@ -524,7 +524,8 @@ class CompleteMealView(APIView):
         responses={
             200: "Meal completed successfully.",
             404: "Session and Meal combination not found."
-        }
+        },
+        consumes=['application/json']
     )
     def post(self, request):
         serializer = CompleteMealSerializer(data=request.data)
