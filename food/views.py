@@ -7,12 +7,12 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.translation import gettext_lazy as _
 from googletrans import Translator
 from food.serializers import (
-    MealSerializer,
+    MealNestedSerializer,
     MealCompletionSerializer,
-    PreparationSerializer,
+    NestedPreparationSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    PreparationStepSerializer
+    NestedPreparationStepSerializer
 )
 from rest_framework.exceptions import PermissionDenied
 from drf_yasg.utils import swagger_auto_schema
