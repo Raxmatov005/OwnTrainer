@@ -175,3 +175,12 @@ class CompleteMealSerializer(serializers.Serializer):
         if not Meal.objects.filter(id=meal_id).exists():
             raise serializers.ValidationError(_("Meal not found."))
         return attrs
+
+
+# swagger_utils.py
+
+class EmptyQuerySerializer(serializers.Serializer):
+    """
+    An empty serializer used to override query parameter generation for GET endpoints.
+    """
+    pass

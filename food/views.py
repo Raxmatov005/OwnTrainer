@@ -84,7 +84,9 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
-        responses={200: MealNestedSerializer(many=True)}
+        responses={200: MealNestedSerializer(many=True)},
+        query_serializer = EmptyQuerySerializer()
+
     )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -185,7 +187,8 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meal Completions'],
         operation_description="List all meal completions for the authenticated user",
-        responses={200: MealCompletionSerializer(many=True)}
+        responses={200: MealCompletionSerializer(many=True)},
+        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -316,7 +319,8 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description="List all preparations.",
-        responses={200: NestedPreparationSerializer(many=True)}
+        responses={200: NestedPreparationSerializer(many=True)},
+        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -454,7 +458,8 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
                 type=openapi.TYPE_INTEGER
             )
         ],
-        responses={200: NestedPreparationStepSerializer(many=True)}
+        responses={200: NestedPreparationStepSerializer(many=True)},
+        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)

@@ -271,3 +271,11 @@ class DailySessionCompletionSerializer(serializers.ModelSerializer):
         if hasattr(obj.session, 'cover_image') and obj.session.cover_image:
             return request.build_absolute_uri(obj.session.cover_image.url)
         return None
+
+
+
+class EmptyQuerySerializer(serializers.Serializer):
+    """
+    An empty serializer used to override query parameter generation for GET endpoints.
+    """
+    pass

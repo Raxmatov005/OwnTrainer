@@ -200,7 +200,8 @@ class SessionViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Sessions'],
-        operation_description=_("List sessions for the user. Staff sees all sessions.")
+        operation_description=_("List sessions for the user. Staff sees all sessions."),
+        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request):
         # Check subscription status (if not active, return an error)
@@ -331,7 +332,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     def get_user_language(self):
         return getattr(self.request.user, 'language', 'en')
 
-    @swagger_auto_schema(tags=['Exercises'], operation_description=_("List exercises for a specific session"))
+    @swagger_auto_schema(tags=['Exercises'], operation_description=_("List exercises for a specific session"), query_serializer=EmptyQuerySerializer())
     def list(self, request):
         if not request.user.is_authenticated:
             return Response({"error": "Authentication credentials were not provided."}, status=403)
