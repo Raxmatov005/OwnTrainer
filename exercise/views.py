@@ -4,7 +4,6 @@ from exercise.serializers import *
 from django.utils.translation import gettext_lazy as _
 from drf_yasg.utils import swagger_auto_schema
 from exercise.permissions import IsAdminOrReadOnly
-from rest_framework.permissions import IsAuthenticated
 from users_app.models import translate_text
 from rest_framework.views import APIView
 from datetime import timedelta
@@ -13,21 +12,15 @@ from drf_yasg import openapi
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils.timezone import now
-from .serializers import SessionSerializer
 from django.utils.dateparse import parse_date
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
-
-
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 
-################################
-##                            ##
-##   This Should be checked   ##
-##                            ##
-################################
-from rest_framework.permissions import IsAuthenticated
+
+
 
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
@@ -102,21 +95,6 @@ class ProgramViewSet(viewsets.ModelViewSet):
         return Response({"message": message})
 
 
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework.decorators import action
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.shortcuts import get_object_or_404
-from django.utils.translation import gettext_lazy as _
-from django.utils.timezone import now
-
-from users_app.models import Program, Session, SessionCompletion, UserProgram, UserSubscription
-from exercise.serializers import SessionNestedSerializer
-from exercise.permissions import IsAdminOrReadOnly
 
 
 class SessionViewSet(viewsets.ModelViewSet):
