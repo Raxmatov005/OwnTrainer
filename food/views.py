@@ -280,12 +280,25 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         return Response({"message": _("Meal completion record deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
 from drf_yasg import openapi
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser, MultiPartParser
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated
+from django.utils.translation import gettext_lazy as _
+from food.serializers import NestedPreparationSerializer, NestedPreparationStepSerializer
+from users_app.models import Preparation, Meal
 
 class PreparationViewSet(viewsets.ModelViewSet):
     queryset = Preparation.objects.all()
     serializer_class = NestedPreparationSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_parser_classes(self):
+        """✅ Correct method to specify parsers"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return [JSONParser]  # JSON-based API
+        return super().get_parser_classes()
 
     def get_queryset(self):
         meal_id = self.request.query_params.get('meal_id')
@@ -302,30 +315,13 @@ class PreparationViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Preparations'],
-        operation_description=_("List all preparations."),
-        responses={200: NestedPreparationSerializer(many=True)},
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Preparations'],
-        operation_description=_("Retrieve a specific preparation by ID."),
-        responses={200: NestedPreparationSerializer()}
-    )
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Preparations'],
         operation_description=_("Create a new preparation with steps."),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 "name": openapi.Schema(type=openapi.TYPE_STRING, description="Name of the preparation"),
                 "description": openapi.Schema(type=openapi.TYPE_STRING, description="Description"),
-                "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER,
-                                                   description="Preparation time in minutes"),
+                "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time in minutes"),
                 "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
                 "water_usage": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water usage"),
                 "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Video URL"),
@@ -350,7 +346,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         consumes=['application/json'],
         responses={201: NestedPreparationSerializer()}
     )
-    @parser_classes([JSONParser])
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
@@ -378,7 +373,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         request_body=NestedPreparationSerializer,
         responses={200: NestedPreparationSerializer()}
     )
-    @parser_classes([JSONParser])
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
@@ -388,7 +382,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         request_body=NestedPreparationSerializer,
         responses={200: NestedPreparationSerializer()}
     )
-    @parser_classes([JSONParser])
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
@@ -430,13 +423,7 @@ class PreparationViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Preparations'],
         operation_description=_("Translate preparation fields into multiple languages if missing."),
-        responses={
-            200: openapi.Response(
-                description="Fields translated successfully.",
-                examples={"application/json": {"message": "Fields translated successfully."}}
-            ),
-            404: "Not Found"
-        }
+        responses={200: {"message": _("Fields translated successfully.")}, 404: "Not Found"}
     )
     @action(detail=True, methods=['post'], url_path='translate')
     def translate_fields(self, request, pk=None):
