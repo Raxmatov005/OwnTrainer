@@ -444,14 +444,25 @@ class ExerciseBlockCompletion(models.Model):
 
 
 
-import logging
-from django.utils.timezone import now
-from celery import shared_task
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+from googletrans import Translator
+from django.utils import timezone
 
-logger = logging.getLogger(__name__)
+translator = Translator()
 
+def translate_text(text, target_language):
+    try:
+        translation = translator.translate(text, dest=target_language)
+        return translation.text if translation else text
+    except Exception:
+        return text
 
 class Meal(models.Model):
+    """
+    Meal model now contains all fields formerly in Preparation (except water_usage,
+    which is removed because water_content already exists).
+    """
     MEAL_TYPES = (
         ('breakfast', 'Breakfast'),
         ('lunch', 'Lunch'),
@@ -464,34 +475,35 @@ class Meal(models.Model):
     food_name_uz = models.CharField(max_length=255, blank=True, null=True)
     food_name_ru = models.CharField(max_length=255, blank=True, null=True)
     food_name_en = models.CharField(max_length=255, blank=True, null=True)
+
     calories = models.DecimalField(max_digits=5, decimal_places=2, help_text="Calories for this meal")
     water_content = models.DecimalField(max_digits=5, decimal_places=2, help_text="Water content in ml")
     food_photo = models.ImageField(upload_to='meal_photos/', blank=True, null=True)
     preparation_time = models.IntegerField(help_text="Preparation time in minutes")
+
     meal_type_uz = models.CharField(max_length=20, blank=True, null=True)
     meal_type_ru = models.CharField(max_length=20, blank=True, null=True)
     meal_type_en = models.CharField(max_length=20, blank=True, null=True)
 
+    # Extra fields formerly in Preparation
+    description = models.TextField(blank=True, null=True)
+    description_uz = models.TextField(blank=True, null=True)
+    description_ru = models.TextField(blank=True, null=True)
+    description_en = models.TextField(blank=True, null=True)
+    video_url = models.URLField(max_length=500, blank=True, null=True)
+
     def save(self, *args, **kwargs):
-        # Tarjima qilish
-        if not self.food_name_uz:
-            self.food_name_uz = translate_text(self.food_name, 'uz')
-        if not self.food_name_ru:
-            self.food_name_ru = translate_text(self.food_name, 'ru')
-        if not self.food_name_en:
-            self.food_name_en = translate_text(self.food_name, 'en')
-
-        if not self.meal_type_uz:
-            self.meal_type_uz = translate_text(dict(self.MEAL_TYPES).get(self.meal_type), 'uz')
-        if not self.meal_type_ru:
-            self.meal_type_ru = translate_text(dict(self.MEAL_TYPES).get(self.meal_type), 'ru')
-        if not self.meal_type_en:
-            self.meal_type_en = translate_text(dict(self.MEAL_TYPES).get(self.meal_type), 'en')
-
+        if self.description and not self.description_uz:
+            self.description_uz = translate_text(self.description, 'uz')
+        if self.description and not self.description_ru:
+            self.description_ru = translate_text(self.description, 'ru')
+        if self.description and not self.description_en:
+            self.description_en = translate_text(self.description, 'en')
         super(Meal, self).save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.meal_type.capitalize()}: {self.food_name}"
+
 
 
 class MealCompletion(models.Model):
@@ -519,123 +531,55 @@ class MealCompletion(models.Model):
         status = "Completed" if self.is_completed else "Pending"
         return f"{self.user.email_or_phone} - {self.meal.food_name} ({status})"
 
-
-class Preparation(models.Model):
+class MealSteps(models.Model):
+    """
+    Each Meal can have multiple steps.
+    (Replaces the old PreparationSteps model.)
+    """
     meal = models.ForeignKey(
-        Meal, on_delete=models.CASCADE, related_name="preparations", verbose_name=_("Meal")
+        Meal,
+        on_delete=models.CASCADE,
+        related_name="steps",
+        verbose_name=_("Meal")
     )
-
-    # Name fields with multi-language support
-    name = models.CharField(max_length=255, verbose_name=_("Preparation Name"))
-    name_uz = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Name (Uzbek)"))
-    name_ru = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Name (Russian)"))
-    name_en = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Name (English)"))
-
-    # Description fields with multi-language support
-    description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
-    description_uz = models.TextField(blank=True, null=True, verbose_name=_("Description (Uzbek)"))
-    description_ru = models.TextField(blank=True, null=True, verbose_name=_("Description (Russian)"))
-    description_en = models.TextField(blank=True, null=True, verbose_name=_("Description (English)"))
-
-    # Additional Fields
-    preparation_time = models.IntegerField(
-        default=0, help_text=_("Preparation time in minutes"), verbose_name=_("Preparation Time")
-    )
-    calories = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0.00, help_text=_("Total calories"), verbose_name=_("Calories")
-    )
-    water_usage = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0.00, help_text=_("Water usage in liters"), verbose_name=_("Water Usage")
-    )
-    video_url = models.URLField(
-        max_length=500, blank=True, null=True, verbose_name=_("Video URL")
-    )
-
-    def save(self, *args, **kwargs):
-        # Automatically translate the name into multiple languages
-        if self.name:
-            if not self.name_uz:
-                self.name_uz = translate_text(self.name, 'uz')
-            if not self.name_ru:
-                self.name_ru = translate_text(self.name, 'ru')
-            if not self.name_en:
-                self.name_en = translate_text(self.name, 'en')
-
-        # Automatically translate the description into multiple languages
-        if self.description:
-            if not self.description_uz:
-                self.description_uz = translate_text(self.description, 'uz')
-            if not self.description_ru:
-                self.description_ru = translate_text(self.description, 'ru')
-            if not self.description_en:
-                self.description_en = translate_text(self.description, 'en')
-
-        super(Preparation, self).save(*args, **kwargs)
-
-    class Meta:
-        verbose_name = _("Preparation")
-        verbose_name_plural = _("Preparations")
-
-    def __str__(self):
-        return f"{self.name} ({self.meal.food_name})"
-
-
-class PreparationSteps(models.Model):
-    preparation = models.ForeignKey(
-        Preparation, on_delete=models.CASCADE, related_name="steps", verbose_name=_("Preparation")
-    )
-
-    # Step titles with multi-language support
     title = models.CharField(max_length=255, verbose_name=_("Step Title"))
     title_uz = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (Uzbek)"))
     title_ru = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (Russian)"))
     title_en = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (English)"))
-
-    # Step descriptions with multi-language support
     text = models.TextField(blank=True, null=True, verbose_name=_("Step Description"))
     text_uz = models.TextField(blank=True, null=True, verbose_name=_("Step Description (Uzbek)"))
     text_ru = models.TextField(blank=True, null=True, verbose_name=_("Step Description (Russian)"))
     text_en = models.TextField(blank=True, null=True, verbose_name=_("Step Description (English)"))
-
-    # Step ordering
     step_number = models.PositiveIntegerField(default=1, verbose_name=_("Step Number"))
-
-    # Step time
     step_time = models.CharField(max_length=10, blank=True, null=True, verbose_name=_("Step Time (minutes)"))
 
-    def save(self, *args, **kwargs):
-        # Avtomatik step_numberni aniqlash
-        if not self.pk:  # Yangi obyekt yaratilganda
-            last_step = PreparationSteps.objects.filter(preparation=self.preparation).order_by('step_number').last()
-            self.step_number = last_step.step_number + 1 if last_step else 1
-
-        # Tarjima qilish
-        if self.title:
-            if not self.title_uz:
-                self.title_uz = translate_text(self.title, 'uz')
-            if not self.title_ru:
-                self.title_ru = translate_text(self.title, 'ru')
-            if not self.title_en:
-                self.title_en = translate_text(self.title, 'en')
-
-        if self.text:
-            if not self.text_uz:
-                self.text_uz = translate_text(self.text, 'uz')
-            if not self.text_ru:
-                self.text_ru = translate_text(self.text, 'ru')
-            if not self.text_en:
-                self.text_en = translate_text(self.text, 'en')
-
-        super(PreparationSteps, self).save(*args, **kwargs)
-
     class Meta:
-        verbose_name = _("Preparation Step")
-        verbose_name_plural = _("Preparation Steps")
+        verbose_name = _("Meal Step")
+        verbose_name_plural = _("Meal Steps")
         ordering = ["step_number"]
-        unique_together = ('preparation', 'step_number')  # Ensures no duplicate step numbers per preparation
+        unique_together = ('meal', 'step_number')
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            last_step = MealSteps.objects.filter(meal=self.meal).order_by('step_number').last()
+            self.step_number = (last_step.step_number + 1) if last_step else 1
+        if self.title and not self.title_uz:
+            self.title_uz = translate_text(self.title, 'uz')
+        if self.title and not self.title_ru:
+            self.title_ru = translate_text(self.title, 'ru')
+        if self.title and not self.title_en:
+            self.title_en = translate_text(self.title, 'en')
+        if self.text and not self.text_uz:
+            self.text_uz = translate_text(self.text, 'uz')
+        if self.text and not self.text_ru:
+            self.text_ru = translate_text(self.text, 'ru')
+        if self.text and not self.text_en:
+            self.text_en = translate_text(self.text, 'en')
+        super(MealSteps, self).save(*args, **kwargs)
 
     def __str__(self):
-        return f"Step {self.step_number} for {self.preparation.name}"
+        return f"Step {self.step_number} for Meal {self.meal.food_name}"
+
 
 
 class Notification(models.Model):

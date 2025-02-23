@@ -18,10 +18,8 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
-
 from rest_framework.parsers import JSONParser
-
-
+# ProgramViewSet
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
@@ -114,17 +112,16 @@ class ProgramViewSet(viewsets.ModelViewSet):
     )
     def destroy(self, request, pk=None):
         if not request.user.is_superuser:
-            message = translate_text("You do not have permission to delete a program.",
-                                     getattr(request.user, 'language', 'en'))
+            language = getattr(request.user, 'language', 'en')
+            message = translate_text("You do not have permission to delete a program.", language)
             return Response({"error": message}, status=status.HTTP_403_FORBIDDEN)
-
         program = self.get_object()
         program.delete()
-        message = translate_text("Program deleted successfully", getattr(request.user, 'language', 'en'))
+        language = getattr(request.user, 'language', 'en')
+        message = translate_text("Program deleted successfully", language)
         return Response({"message": message}, status=status.HTTP_204_NO_CONTENT)
 
-from rest_framework.parsers import JSONParser
-
+# SessionViewSet with nested ExerciseBlock
 class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
     serializer_class = SessionNestedSerializer
@@ -144,7 +141,7 @@ class SessionViewSet(viewsets.ModelViewSet):
 
     def get_parser_classes(self):
         if self.action in ["create", "update", "partial_update"]:
-            return [JSONParser]  # Ensure JSON is used for these actions
+            return [JSONParser]
         return super().get_parser_classes()
 
     @swagger_auto_schema(
@@ -160,12 +157,10 @@ class SessionViewSet(viewsets.ModelViewSet):
         program_id = request.data.get('program')
         if not program_id:
             return Response({"error": _("Program ID is required.")}, status=status.HTTP_400_BAD_REQUEST)
-
         try:
-            program = Program.objects.get(id=program_id)
+            Program.objects.get(id=program_id)
         except Program.DoesNotExist:
             return Response({"error": _("Specified program does not exist.")}, status=status.HTTP_404_NOT_FOUND)
-
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -186,7 +181,6 @@ class SessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         if not request.user.is_superuser:
             return Response({"error": _("You do not have permission to update this session.")}, status=403)
-
         serializer = self.get_serializer(session, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -198,7 +192,6 @@ class SessionViewSet(viewsets.ModelViewSet):
         session = self.get_object()
         if not request.user.is_superuser:
             return Response({"error": _("You do not have permission to partially update this session.")}, status=403)
-
         serializer = self.get_serializer(session, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -209,7 +202,6 @@ class SessionViewSet(viewsets.ModelViewSet):
     def destroy(self, request, pk=None):
         if not request.user.is_superuser:
             return Response({"error": _("You do not have permission to delete this session.")}, status=403)
-
         session = self.get_object()
         session.delete()
         return Response({"message": _("Session deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
@@ -220,32 +212,25 @@ class SessionViewSet(viewsets.ModelViewSet):
         user_subscription = UserSubscription.objects.filter(user=request.user, is_active=True).first()
         if not user_subscription or not user_subscription.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
             return Response({"error": _("No active program found for the user.")}, status=404)
-
         incomplete_sc = SessionCompletion.objects.filter(
             user=request.user,
             session__program=user_program.program,
             is_completed=False
         ).select_related('session').order_by('session__session_number')
-
         if not incomplete_sc.exists():
             return Response({"message": _("You have completed all sessions!")}, status=200)
-
         next_sc = incomplete_sc.first()
         next_session_number = next_sc.session.session_number
-
         session_ids = [sc.session_id for sc in incomplete_sc]
         sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
-
         data = [
             {**self.get_serializer(s).data, "locked": (s.session_number > next_session_number)}
             for s in sessions
         ]
-
-        return Response({"sessions": data}, status=200)
+        return Response({"sessions": data}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Retrieve session by session_number"))
     @action(detail=False, methods=['get'], url_path='by-session-number')
@@ -254,16 +239,13 @@ class SessionViewSet(viewsets.ModelViewSet):
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program:
             return Response({"error": _("No active program found.")}, status=404)
-
         session_number = request.query_params.get('session_number')
         if not session_number:
             return Response({"error": "session_number is required."}, status=400)
-
         try:
             session = Session.objects.get(program=user_program.program, session_number=session_number)
         except Session.DoesNotExist:
             return Response({"error": "Session not found."}, status=404)
-
         serializer = self.get_serializer(session)
         return Response(serializer.data, status=200)
 
@@ -274,12 +256,22 @@ class SessionViewSet(viewsets.ModelViewSet):
         today_sc = SessionCompletion.objects.filter(user=request.user, session_date=now().date()).first()
         if not today_sc:
             return Response({"error": _("No session found for today.")}, status=404)
-
         today_sc.is_completed = False
         today_sc.completion_date = None
         today_sc.save()
-
         return Response({"message": _("Today's session has been reset successfully.")}, status=200)
+
+
+
+class ExerciseBlockViewSet(viewsets.ModelViewSet):
+    queryset = ExerciseBlock.objects.all()
+    serializer_class = NestedExerciseBlockSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_serializer_context(self):
+        language = self.request.query_params.get('lang', 'en')
+        return {**super().get_serializer_context(), "language": language, "request": self.request}
 
 
 class CompleteBlockView(APIView):
@@ -299,45 +291,30 @@ class CompleteBlockView(APIView):
     )
     def post(self, request):
         block_id = request.data.get("block_id")
-
-        # ✅ Ensure block_id is an integer
         if not block_id or not isinstance(block_id, int):
             return Response({"error": _("Valid block_id is required.")}, status=400)
-
         block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
-
-        # ✅ Ensure user has an active subscription
         from users_app.models import UserProgram
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not request.user.is_staff:
             if not user_program or not user_program.is_subscription_active():
                 return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-
-        # ✅ Check if the block is already completed
         bc, created = block.completions.get_or_create(user=request.user)
         if bc.is_completed:
             return Response({"message": _("Block already completed.")}, status=200)
-
-        # ✅ Mark block as completed
         bc.is_completed = True
         bc.save()
-
-        # ✅ Check if all blocks in the session are completed
         session = block.session
         all_blocks = session.blocks.all()
         completed_blocks = all_blocks.filter(completions__user=request.user, completions__is_completed=True)
-
         if completed_blocks.count() == all_blocks.count():
-            # ✅ If all blocks are completed, mark the session as completed
             from users_app.models import SessionCompletion
             session_completion, _ = SessionCompletion.objects.get_or_create(user=request.user, session=session)
             session_completion.is_completed = True
             session_completion.completion_date = now().date()
             session_completion.save()
             return Response({"message": _("Block completed. Session is now completed.")}, status=200)
-
         return Response({"message": _("Block completed successfully.")}, status=200)
-
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.select_related('category').all()
@@ -355,10 +332,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     def list(self, request):
         if not request.user.is_authenticated:
             return Response({"error": _("Authentication credentials were not provided.")}, status=403)
-
         session_id = request.query_params.get('session_id')
-
-        # ✅ Ensure proper queryset filtering
         if session_id:
             try:
                 session_id = int(session_id)
@@ -367,10 +341,8 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             queryset = self.get_queryset().filter(sessions__id=session_id)
         else:
             queryset = self.get_queryset()
-
         if not request.user.is_superuser:
             queryset = queryset.filter(sessions__program__is_active=True)
-
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
 
@@ -400,19 +372,14 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     def by_category(self, request):
         language = self.get_user_language()
         category_id = request.query_params.get('category_id')
-
-        # ✅ Ensure category_id is an integer
         if not category_id or not category_id.isdigit():
             message = translate_text("Valid category ID is required.", language)
             return Response({"error": message}, status=400)
-
         category_id = int(category_id)
         queryset = self.get_queryset().filter(category_id=category_id)
-
         if not queryset.exists():
             message = translate_text("No exercises found for the given category.", language)
             return Response({"message": message}, status=404)
-
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
 
@@ -426,14 +393,13 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         tags=['Exercises'],
         operation_description=_("Create a new exercise."),
         request_body=NestedExerciseSerializer,
-        consumes=['multipart/form-data']  # Ensure file uploads are handled properly
+        consumes=['multipart/form-data']
     )
     def create(self, request):
         language = self.get_user_language()
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to create an exercise.", language)
             return Response({"error": message}, status=403)
-
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -448,7 +414,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to update this exercise.", language)
             return Response({"error": message}, status=403)
-
         serializer = self.get_serializer(exercise, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -463,7 +428,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to partially update this exercise.", language)
             return Response({"error": message}, status=403)
-
         serializer = self.get_serializer(exercise, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -477,7 +441,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         if not request.user.is_superuser:
             message = translate_text("You do not have permission to delete this exercise.", language)
             return Response({"error": message}, status=403)
-
         exercise = self.get_object()
         exercise.delete()
         message = translate_text("Exercise deleted successfully", language)

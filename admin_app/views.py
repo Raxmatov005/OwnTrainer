@@ -16,7 +16,7 @@ from .pagination import AdminPageNumberPagination
 from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
 from rest_framework.generics import GenericAPIView  # ✅ Add this import
-
+from itertools import chain
 
 from admin_app.serializers import AdminLoginSerializer  # ✅ Ensure this is correctly imported
 
@@ -153,16 +153,23 @@ class AdminContentViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminUser]
     pagination_class = AdminPageNumberPagination
 
+
+
     def get_queryset(self, content_type):
-        if content_type == "exercises":
-            return Exercise.objects.all()
+        if content_type == "blocks":
+            return ExerciseBlock.objects.all()
         elif content_type == "meals":
             return Meal.objects.all()
-        return Exercise.objects.none()
+        elif content_type == "all":
+            # Combine both into a single Python list
+            blocks = list(ExerciseBlock.objects.all())
+            meals = list(Meal.objects.all())
+            return list(chain(blocks, meals))  # or blocks + meals
+        return ExerciseBlock.objects.none()
 
     @action(detail=False, methods=['get'], url_path='exercises')
     def list_exercises(self, request):
-        queryset = self.get_queryset("exercises")
+        queryset = self.get_queryset("blocks")
         paginator = self.pagination_class()
         paginated_queryset = paginator.paginate_queryset(queryset, request)
         serializer = NestedExerciseSerializer(paginated_queryset, many=True)

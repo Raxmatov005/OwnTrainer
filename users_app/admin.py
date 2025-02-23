@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from users_app.models import (User, UserProgram, UserProgress, Program, Preparation, PreparationSteps,
+from users_app.models import (User, UserProgram, UserProgress, Program,
                               SessionCompletion, MealCompletion, Exercise,
                               Notification, Meal, Session)
 
@@ -13,8 +13,6 @@ admin.site.register(SessionCompletion)
 admin.site.register(Exercise)
 admin.site.register(Meal)
 admin.site.register(MealCompletion)
-admin.site.register(Preparation)
-admin.site.register(PreparationSteps)
 admin.site.register(Notification)
 
 

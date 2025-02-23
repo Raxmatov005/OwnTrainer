@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from exercise.views import (ProgramViewSet, SessionViewSet,
                             ExerciseViewSet,UserProgramViewSet,
-                            ProgressView,CompleteBlockView)
+                            ProgressView,CompleteBlockView,
+                            ExerciseBlockViewSet)
 
 from django.conf import settings
 from django.conf.urls.static import static
@@ -12,6 +13,7 @@ router = DefaultRouter()
 router.register(r'programs', ProgramViewSet, basename='program')
 router.register(r'sessions', SessionViewSet, basename='session')
 router.register(r'exercises', ExerciseViewSet, basename='exercise')
+router.register(r'exerciseblocks', ExerciseBlockViewSet, basename='exerciseblock')
 router.register(r'userprogram', UserProgramViewSet, basename='userprogram')
 
 urlpatterns = [
