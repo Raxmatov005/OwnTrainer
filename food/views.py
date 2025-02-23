@@ -449,11 +449,24 @@ class PreparationViewSet(viewsets.ModelViewSet):
 
 from drf_yasg import openapi
 from rest_framework.parsers import JSONParser
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated
+from django.utils.translation import gettext_lazy as _
+from food.serializers import NestedPreparationStepSerializer
+from users_app.models import PreparationSteps, Preparation
 
 class PreparationStepViewSet(viewsets.ModelViewSet):
     queryset = PreparationSteps.objects.all()
     serializer_class = NestedPreparationStepSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_parser_classes(self):
+        """✅ Correct method to specify parsers"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return [JSONParser]  # JSON-based API
+        return super().get_parser_classes()
 
     def get_queryset(self):
         preparation_id = self.request.query_params.get('preparation_id')
@@ -467,31 +480,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context['language'] = getattr(self.request.user, 'language', 'en')
         return context
-
-    @swagger_auto_schema(
-        tags=['Preparation Steps'],
-        operation_description=_("List all preparation steps or filter by preparation_id"),
-        manual_parameters=[
-            openapi.Parameter(
-                'preparation_id',
-                openapi.IN_QUERY,
-                description="Filter preparation steps by preparation ID",
-                type=openapi.TYPE_INTEGER
-            )
-        ],
-        responses={200: NestedPreparationStepSerializer(many=True)},
-        query_serializer=EmptyQuerySerializer()
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Preparation Steps'],
-        operation_description=_("Retrieve a specific preparation step by ID"),
-        responses={200: NestedPreparationStepSerializer()}
-    )
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Preparation Steps'],
@@ -510,7 +498,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         consumes=['application/json'],
         responses={201: NestedPreparationStepSerializer()}
     )
-    @parser_classes([JSONParser])
     def create(self, request, *args, **kwargs):
         preparation_id = request.data.get("preparation_id")
 
@@ -535,7 +522,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         request_body=NestedPreparationStepSerializer,
         responses={200: NestedPreparationStepSerializer()}
     )
-    @parser_classes([JSONParser])
     def update(self, request, *args, **kwargs):
         step = self.get_object()
         serializer = self.get_serializer(step, data=request.data)
@@ -553,7 +539,6 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         request_body=NestedPreparationStepSerializer,
         responses={200: NestedPreparationStepSerializer()}
     )
-    @parser_classes([JSONParser])
     def partial_update(self, request, *args, **kwargs):
         step = self.get_object()
         serializer = self.get_serializer(step, data=request.data, partial=True)
@@ -574,6 +559,7 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
         step = self.get_object()
         step.delete()
         return Response({"message": _("Preparation step deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
+
 from rest_framework.parsers import JSONParser
 
 class CompleteMealView(APIView):
