@@ -200,6 +200,7 @@ class SessionViewSet(viewsets.ModelViewSet):
             return [JSONParser]
         return super().get_parser_classes()
 
+    @parser_classes([JSONParser])
     @swagger_auto_schema(
         tags=['Sessions'],
         operation_description=_("Create a new session for a program (with nested exercise block)."),

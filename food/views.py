@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
 from users_app.models import Preparation, Meal, MealCompletion, SessionCompletion, Session, PreparationSteps, UserProgram
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.utils.translation import gettext_lazy as _
 from googletrans import Translator
 from food.serializers import (
@@ -138,6 +138,7 @@ class MealViewSet(viewsets.ModelViewSet):
             return [JSONParser]
         return super().get_parser_classes()
 
+    @parser_classes([JSONParser])
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
