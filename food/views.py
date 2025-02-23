@@ -41,7 +41,16 @@ class MealViewSet(viewsets.ModelViewSet):
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # ✅ Moved here
 
+
+    def get_parser_classes(self):
+        """✅ Ensure correct parser for each action"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return [JSONParser]  # JSON-based API
+        elif self.action == 'upload_image':
+            return [MultiPartParser]  # For file uploads
+        return super().get_parser_classes()
     def get_serializer_context(self):
         language = self.request.query_params.get('lang', 'en')
         return {**super().get_serializer_context(), "language": language}
@@ -63,7 +72,6 @@ class MealViewSet(viewsets.ModelViewSet):
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
         responses={200: MealNestedSerializer(many=True)},
-        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -74,7 +82,6 @@ class MealViewSet(viewsets.ModelViewSet):
         tags=['Meals'],
         operation_description=_("Retrieve a specific meal"),
         responses={200: MealNestedSerializer()},
-        query_serializer=EmptyQuerySerializer()
     )
     def retrieve(self, request, pk=None):
         meal = self.get_object()
@@ -83,56 +90,10 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Create a new meal with nested preparations."),
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "food_name": openapi.Schema(type=openapi.TYPE_STRING, description="Food name"),
-                "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time (minutes)"),
-                "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
-                "water_content": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water content"),
-                "food_photo": openapi.Schema(type=openapi.TYPE_STRING, format="binary", description="Meal image"),
-                "description": openapi.Schema(type=openapi.TYPE_STRING, description="Meal description"),
-                "meal_type": openapi.Schema(type=openapi.TYPE_STRING, description="Meal type"),
-                "preparations": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            "name": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation name"),
-                            "description": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation details"),
-                            "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Time (minutes)"),
-                            "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
-                            "water_usage": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water usage"),
-                            "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Video URL"),
-                            "steps": openapi.Schema(
-                                type=openapi.TYPE_ARRAY,
-                                items=openapi.Schema(
-                                    type=openapi.TYPE_OBJECT,
-                                    properties={
-                                        "title": openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                                        "text": openapi.Schema(type=openapi.TYPE_STRING, description="Step details"),
-                                        "step_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Time (seconds)")
-                                    },
-                                    required=["title", "text"],
-                                    description="Preparation step"
-                                ),
-                                description="List of preparation steps"
-                            )
-                        },
-                        required=["name", "preparation_time"],
-                        description="A nested preparation object"
-                    ),
-                    description="List of preparations"
-                )
-            },
-            required=["food_name", "preparation_time", "calories", "meal_type"],
-            description="Payload for creating a meal with preparations."
-        ),
+        request_body=MealNestedSerializer,
         consumes=['multipart/form-data'],
         responses={201: MealNestedSerializer()}
     )
-    @parser_classes([MultiPartParser, JSONParser])
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
@@ -149,7 +110,6 @@ class MealViewSet(viewsets.ModelViewSet):
         request_body=MealNestedSerializer,
         responses={200: MealNestedSerializer()}
     )
-    @parser_classes([JSONParser])
     def update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
         serializer = self.get_serializer(meal, data=request.data)
@@ -167,7 +127,6 @@ class MealViewSet(viewsets.ModelViewSet):
         request_body=MealNestedSerializer,
         responses={200: MealNestedSerializer()}
     )
-    @parser_classes([JSONParser])
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
         serializer = self.get_serializer(meal, data=request.data, partial=True)
@@ -210,7 +169,6 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         tags=['Meal Completions'],
         operation_description=_("List all meal completions for the authenticated user"),
         responses={200: MealCompletionSerializer(many=True)},
-        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -241,7 +199,6 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         ),
         responses={201: MealCompletionSerializer()}
     )
-    @parser_classes([JSONParser])
     def create(self, request, *args, **kwargs):
         serializer = CompleteMealSerializer(data=request.data)
         if serializer.is_valid():
@@ -284,7 +241,6 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         request_body=MealCompletionSerializer,
         responses={200: MealCompletionSerializer()}
     )
-    @parser_classes([JSONParser])
     def update(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         serializer = self.get_serializer(meal_completion, data=request.data)
@@ -302,7 +258,6 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         request_body=MealCompletionSerializer,
         responses={200: MealCompletionSerializer()}
     )
-    @parser_classes([JSONParser])
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal_completion = self.get_object()
         serializer = self.get_serializer(meal_completion, data=request.data, partial=True)
@@ -349,7 +304,6 @@ class PreparationViewSet(viewsets.ModelViewSet):
         tags=['Preparations'],
         operation_description=_("List all preparations."),
         responses={200: NestedPreparationSerializer(many=True)},
-        query_serializer=EmptyQuerySerializer()
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -364,13 +318,14 @@ class PreparationViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Preparations'],
-        operation_description=_("Create a new preparation with automatic translation."),
+        operation_description=_("Create a new preparation with steps."),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 "name": openapi.Schema(type=openapi.TYPE_STRING, description="Name of the preparation"),
                 "description": openapi.Schema(type=openapi.TYPE_STRING, description="Description"),
-                "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER, description="Preparation time in minutes"),
+                "preparation_time": openapi.Schema(type=openapi.TYPE_INTEGER,
+                                                   description="Preparation time in minutes"),
                 "calories": openapi.Schema(type=openapi.TYPE_NUMBER, description="Calories"),
                 "water_usage": openapi.Schema(type=openapi.TYPE_NUMBER, description="Water usage"),
                 "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Video URL"),
@@ -401,12 +356,14 @@ class PreparationViewSet(viewsets.ModelViewSet):
         if serializer.is_valid():
             preparation = serializer.save()
 
-            # Ensure nested steps are saved
+            # Validate and attach steps
             steps_data = request.data.get("steps", [])
             for step_data in steps_data:
                 step_serializer = NestedPreparationStepSerializer(data=step_data, context=self.get_serializer_context())
                 if step_serializer.is_valid():
                     step_serializer.save(preparation=preparation)
+                else:
+                    return Response(step_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             return Response({
                 "message": _("Preparation created successfully"),
@@ -569,12 +526,14 @@ class PreparationStepViewSet(viewsets.ModelViewSet):
     @parser_classes([JSONParser])
     def create(self, request, *args, **kwargs):
         preparation_id = request.data.get("preparation_id")
-        if not preparation_id or not Preparation.objects.filter(id=preparation_id).exists():
+
+        # Check if preparation exists
+        preparation = Preparation.objects.filter(id=preparation_id).first()
+        if not preparation:
             return Response({"error": _("Invalid preparation ID.")}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            preparation = Preparation.objects.get(id=preparation_id)
             step = serializer.save(preparation=preparation)
             return Response({
                 "message": _("Preparation step created successfully"),
