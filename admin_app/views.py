@@ -24,31 +24,46 @@ from rest_framework_simplejwt.tokens import RefreshToken  # ✅ Import JWT token
 from admin_app.serializers import AdminLoginSerializer  # Ensure this is correctly imported
 
 ### **🔹 Admin Statistics View (Dashboard)**
+from django.utils import timezone
+
+
 class AdminUserStatisticsView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        today = now().date()
+        today = timezone.now().date()
         seven_days_ago = today - timedelta(days=7)
         one_month_ago = today - timedelta(days=30)
 
-        ### **TOP SECTION - Overall Statistics (3 UI Cells)**
+        # Top section statistics
         total_users = User.objects.count()
         users_today = User.objects.filter(date_joined__date=today).count()
         premium_users = User.objects.filter(is_premium=True).count()
         non_premium_users = User.objects.filter(is_premium=False).count()
-
         total_exercises = Exercise.objects.count()
         total_meals = Meal.objects.count()
-
         registered_last_7_days = User.objects.filter(date_joined__gte=seven_days_ago).count()
         registered_last_month = User.objects.filter(date_joined__gte=one_month_ago).count()
 
-        active_subscriptions = UserProgram.objects.filter(is_paid=True, is_active=True).count()
-        inactive_subscriptions = UserProgram.objects.filter(is_paid=False).count()
+        # Replace is_paid filters with actual related field lookups
+        active_subscriptions = UserProgram.objects.filter(
+            is_active=True,
+            user__subscriptions__is_active=True,
+            user__subscriptions__end_date__gte=today
+        ).distinct().count()
 
-        total_income = UserProgram.objects.filter(is_paid=True).aggregate(total_income=Sum('amount'))
-        total_income = total_income["total_income"] if total_income["total_income"] is not None else 0
+        inactive_subscriptions = UserProgram.objects.filter(
+            is_active=True
+        ).exclude(
+            user__subscriptions__is_active=True,
+            user__subscriptions__end_date__gte=today
+        ).distinct().count()
+
+        total_income_qs = UserProgram.objects.filter(
+            user__subscriptions__is_active=True,
+            user__subscriptions__end_date__gte=today
+        ).aggregate(total_income=Sum('amount'))
+        total_income = total_income_qs["total_income"] if total_income_qs["total_income"] is not None else 0
 
         top_section_data = {
             "users_today": users_today,
@@ -64,6 +79,7 @@ class AdminUserStatisticsView(APIView):
             "total_income": total_income,
         }
 
+        # Bottom section: Grouped by country
         countries_data = (
             User.objects.values("country")
             .annotate(
