@@ -27,9 +27,8 @@ def translate_field(instance, field_name, language):
 class ProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
-        fields = ['id', 'frequency_per_week', 'total_sessions', 'program_goal', 'is_active']
+        fields = ['id', 'total_sessions', 'program_goal', 'is_active']
         extra_kwargs = {
-            'frequency_per_week': {'label': _("Frequency per Week")},
             'total_sessions': {'label': _("Total Sessions")},
             'program_goal': {'label': _("Program Goal")},
             'is_active': {'label': _("Is Active")},

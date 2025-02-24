@@ -116,7 +116,6 @@ class UserProgress(models.Model):
 
 
 class Program(models.Model):
-    frequency_per_week = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(7)])
     total_sessions = models.IntegerField(default=0)  # Number of sessions in the program
     program_goal = models.CharField(max_length=255)
     program_goal_uz = models.CharField(max_length=255, blank=True, null=True)
