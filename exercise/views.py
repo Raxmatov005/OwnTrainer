@@ -317,7 +317,7 @@ class CompleteBlockView(APIView):
         return Response({"message": _("Block completed successfully.")}, status=200)
 
 class ExerciseViewSet(viewsets.ModelViewSet):
-    queryset = Exercise.objects.select_related('category').all()
+    queryset = Exercise.objects.all()
     serializer_class = NestedExerciseSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
@@ -343,43 +343,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             queryset = self.get_queryset()
         if not request.user.is_superuser:
             queryset = queryset.filter(sessions__program__is_active=True)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({"exercises": serializer.data})
-
-    @swagger_auto_schema(
-        tags=['Exercises'],
-        operation_description=_("Retrieve exercises by category ID"),
-        manual_parameters=[
-            openapi.Parameter(
-                'category_id',
-                openapi.IN_QUERY,
-                description="ID of the category to filter exercises by",
-                type=openapi.TYPE_INTEGER,
-                required=True
-            )
-        ],
-        responses={
-            200: openapi.Response(
-                description="A list of exercises in the specified category",
-                schema=NestedExerciseSerializer(many=True)
-            ),
-            400: "Category ID is required",
-            404: "No exercises found for the given category"
-        },
-        query_serializer=EmptyQuerySerializer()
-    )
-    @action(detail=False, methods=['get'], url_path='by-category')
-    def by_category(self, request):
-        language = self.get_user_language()
-        category_id = request.query_params.get('category_id')
-        if not category_id or not category_id.isdigit():
-            message = translate_text("Valid category ID is required.", language)
-            return Response({"error": message}, status=400)
-        category_id = int(category_id)
-        queryset = self.get_queryset().filter(category_id=category_id)
-        if not queryset.exists():
-            message = translate_text("No exercises found for the given category.", language)
-            return Response({"message": message}, status=404)
         serializer = self.get_serializer(queryset, many=True)
         return Response({"exercises": serializer.data})
 
