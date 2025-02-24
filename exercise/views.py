@@ -18,7 +18,8 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
-from rest_framework.parsers import JSONParser
+
+
 # ProgramViewSet
 class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
@@ -124,7 +125,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
 # SessionViewSet with nested ExerciseBlock
 class SessionViewSet(viewsets.ModelViewSet):
     queryset = Session.objects.all()
-    serializer_class = SessionNestedSerializer
+    serializer_class = SessionPKSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -134,21 +135,11 @@ class SessionViewSet(viewsets.ModelViewSet):
         context['language'] = language
         return context
 
-    def get_serializer(self, *args, **kwargs):
-        if self.action == 'reset_today_session':
-            return None
-        return super().get_serializer(*args, **kwargs)
-
-    def get_parser_classes(self):
-        if self.action in ["create", "update", "partial_update"]:
-            return [JSONParser]
-        return super().get_parser_classes()
-
     @swagger_auto_schema(
         tags=['Sessions'],
-        operation_description=_("Create a new session with a nested exercise block."),
-        consumes=['multipart/form-data'],
-        responses={201: SessionNestedSerializer()}
+        operation_description=_("Create a new session by linking an existing exercise block and meals using their IDs."),
+        request_body=SessionPKSerializer,
+        responses={201: SessionPKSerializer()}
     )
     def create(self, request, *args, **kwargs):
         if not request.user.is_superuser:
@@ -169,7 +160,6 @@ class SessionViewSet(viewsets.ModelViewSet):
                 "session": serializer.data
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Retrieve session by ID"))
     def retrieve(self, request, pk=None):
         session = self.get_object()
@@ -263,21 +253,6 @@ class SessionViewSet(viewsets.ModelViewSet):
 
 
 
-# class ExerciseBlockViewSet(viewsets.ModelViewSet):
-#     queryset = ExerciseBlock.objects.all()
-#     serializer_class = NestedExerciseBlockSerializer
-#     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
-#     parser_classes = [MultiPartParser, FormParser, JSONParser]
-#
-#     def get_serializer_context(self):
-#         language = self.request.query_params.get('lang', 'en')
-#         return {**super().get_serializer_context(), "language": language, "request": self.request}
-
-
-
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()

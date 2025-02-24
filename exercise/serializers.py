@@ -143,58 +143,60 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
         return instance
 
 
-# ------------------------------
-# Session Nested Serializer (Unified Creation)
-# ------------------------------
-class SessionNestedSerializer(serializers.ModelSerializer):
-    # 'meals' field is omitted here since we're focusing on exercise.
-    block = NestedExerciseBlockSerializer(required=True)
+class SessionPKSerializer(serializers.ModelSerializer):
+    # Instead of nested data, use primary key references.
+    block = serializers.PrimaryKeyRelatedField(
+        queryset=ExerciseBlock.objects.all(), required=False,
+        help_text="ID of an existing exercise block to attach to this session."
+    )
+    meals = serializers.PrimaryKeyRelatedField(
+        queryset=Meal.objects.all(), many=True, required=False,
+        help_text="List of meal IDs to attach to this session."
+    )
 
     class Meta:
         model = Session
-        fields = ['id', 'program', 'session_number', 'block']
-        extra_kwargs = {
-            'session_number': {'read_only': True},
-        }
+        fields = ['id', 'program', 'session_number', 'block', 'meals']
+        extra_kwargs = {'session_number': {'read_only': True}}
 
     def create(self, validated_data):
-        block_data = validated_data.pop('block')
+        # Pop the block and meals (if provided) from the validated_data.
+        block = validated_data.pop('block', None)
+        meals = validated_data.pop('meals', [])
+
+        # Determine session number based on the program.
         program = validated_data.get('program')
         last_session = Session.objects.filter(program=program).order_by('-session_number').first()
         next_number = (last_session.session_number + 1) if last_session else 1
         validated_data['session_number'] = next_number
+
+        # Create the session.
         session = Session.objects.create(**validated_data)
-        # Create the nested ExerciseBlock and link it to the session.
-        block_serializer = NestedExerciseBlockSerializer(data=block_data, context=self.context)
-        block_serializer.is_valid(raise_exception=True)
-        block = block_serializer.save()
-        block.session = session
-        block.save()
+
+        # If a block ID was provided, attach that block to the session.
+        if block:
+            block.session = session  # because ExerciseBlock has a OneToOneField to Session
+            block.save()
+
+        # Set the many-to-many meals if provided.
+        if meals:
+            session.meals.set(meals)
+
         return session
 
     def update(self, instance, validated_data):
-        block_data = validated_data.pop('block', None)
+        block = validated_data.pop('block', None)
+        meals = validated_data.pop('meals', None)
         instance = super().update(instance, validated_data)
-        if block_data is not None:
-            if hasattr(instance, 'block') and instance.block:
-                block_serializer = NestedExerciseBlockSerializer(
-                    instance=instance.block,
-                    data=block_data,
-                    partial=True,
-                    context=self.context
-                )
-                block_serializer.is_valid(raise_exception=True)
-                block_serializer.save()
-            else:
-                block_serializer = NestedExerciseBlockSerializer(data=block_data, context=self.context)
-                block_serializer.is_valid(raise_exception=True)
-                block = block_serializer.save()
-                block.session = instance
-                block.save()
+
+        if block is not None:
+            block.session = instance
+            block.save()
+        if meals is not None:
+            instance.meals.set(meals)
         return instance
-# ------------------------------
-# UserProgress Serializer (unchanged)
-# ------------------------------
+
+
 class UserProgressSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProgress
