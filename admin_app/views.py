@@ -64,7 +64,6 @@ class AdminUserStatisticsView(APIView):
             "total_income": total_income,
         }
 
-        ### **BOTTOM SECTION - Grouped by Country**
         countries_data = (
             User.objects.values("country")
             .annotate(
@@ -73,9 +72,20 @@ class AdminUserStatisticsView(APIView):
                 non_subscribers=Count("id", filter=Q(is_premium=False)),
                 active_users=Count("id", filter=Q(is_active=True)),
                 inactive_users=Count("id", filter=Q(is_active=False)),
-                active_subscriptions=Count("user_programs", filter=Q(user_programs__is_paid=True, user_programs__is_active=True)),
-                inactive_subscriptions=Count("user_programs", filter=Q(user_programs__is_paid=False)),
-                income=Sum("user_programs__amount", filter=Q(user_programs__is_paid=True)),
+                active_subscriptions=Count("user_programs", filter=Q(
+                    user_programs__is_active=True,
+                    subscriptions__is_active=True,
+                    subscriptions__end_date__gte=today
+                )),
+                inactive_subscriptions=Count("user_programs", filter=~Q(
+                    subscriptions__is_active=True,
+                    subscriptions__end_date__gte=today
+                )),
+                income=Sum("user_programs__amount", filter=Q(
+                    user_programs__is_active=True,
+                    subscriptions__is_active=True,
+                    subscriptions__end_date__gte=today
+                )),
             )
         )
 
