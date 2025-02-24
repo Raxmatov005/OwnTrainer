@@ -18,7 +18,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
-
+from .subscribtion_check import IsSubscriptionActive
 
 # ProgramViewSet
 class ProgramViewSet(viewsets.ModelViewSet):
@@ -198,11 +198,8 @@ class SessionViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("List sessions for the user. Staff sees all sessions."))
     def list(self, request):
-        from users_app.models import UserSubscription, UserProgram
-        user_subscription = UserSubscription.objects.filter(user=request.user, is_active=True).first()
-        if not user_subscription or not user_subscription.is_subscription_active():
-            return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
-        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+        from users_app.models import UserProgram
+        user_program = UserProgram.objects.filter(user=request.user).first()
         if not user_program:
             return Response({"error": _("No active program found for the user.")}, status=404)
         incomplete_sc = SessionCompletion.objects.filter(
@@ -257,7 +254,7 @@ class SessionViewSet(viewsets.ModelViewSet):
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_context(self):
