@@ -43,22 +43,39 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language, "request": self.request}
 
     def get_queryset(self):
-        if getattr(self, 'swagger_fake_view', False):
+        """Retrieve meals only if the user has an active subscription."""
+
+        # ✅ Fix for Swagger UI (Handles anonymous users)
+        if getattr(self, "swagger_fake_view", False):
             return Meal.objects.none()
 
-        if not self.request.user.is_authenticated:
+        # ✅ Ensure user is authenticated
+        user = self.request.user
+        if not user or not user.is_authenticated:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
 
-        # If the user is an admin, return all meals
-        if self.request.user.is_staff:
+        # ✅ Admins can view all meals
+        if user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
 
-        # For regular users, filter meals assigned to their sessions
-        user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
-        if not user_program or not user_program.is_subscription_active():
+        # ✅ Get the active user program
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+
+        if not user_program:
             return Meal.objects.none()
 
+        # ✅ Ensure the user has an active subscription before retrieving meals
+        has_active_subscription = UserSubscription.objects.filter(
+            user=user,
+            is_active=True,
+            end_date__gte=timezone.now().date()
+        ).exists()
+
+        if not has_active_subscription:
+            return Meal.objects.none()
+
+        # ✅ Fetch meals related to the user's program sessions
         return Meal.objects.filter(
             sessions__program=user_program.program
         ).distinct().prefetch_related("steps")
@@ -83,7 +100,11 @@ class MealViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
-
+    import json
+    from drf_yasg import openapi
+    from drf_yasg.utils import swagger_auto_schema
+    from rest_framework import status
+    from rest_framework.response import Response
 
     @swagger_auto_schema(
         manual_parameters=[
@@ -98,12 +119,20 @@ class MealViewSet(viewsets.ModelViewSet):
             type=openapi.TYPE_OBJECT,
             properties={
                 "meal_data": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="JSON string containing meal fields (meal_type, food_name, calories, water_content, etc.)"
+                    type=openapi.TYPE_OBJECT,  # ✅ Should be OBJECT, not STRING
+                    description="JSON object containing meal fields (meal_type, food_name, calories, water_content, etc.)"
                 ),
                 "steps": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="JSON string containing meal steps (list of {title, text, step_time})"
+                    type=openapi.TYPE_ARRAY,  # ✅ Should be ARRAY for list of steps
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            "title": openapi.Schema(type=openapi.TYPE_STRING),
+                            "text": openapi.Schema(type=openapi.TYPE_STRING),
+                            "step_time": openapi.Schema(type=openapi.TYPE_STRING)
+                        }
+                    ),
+                    description="JSON array containing meal steps (list of {title, text, step_time})"
                 )
             },
             required=["meal_data"]
@@ -130,7 +159,8 @@ class MealViewSet(viewsets.ModelViewSet):
 
         # ✅ Merge JSON fields into validated_data
         meal_data["food_photo"] = food_photo  # Assign uploaded image
-        meal_data["steps"] = steps_data  # Assign steps list
+        if steps_data:
+            meal_data["steps"] = steps_data  # Assign steps list if not empty
 
         serializer = self.get_serializer(data=meal_data)
 
