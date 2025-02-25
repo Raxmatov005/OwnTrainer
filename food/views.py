@@ -89,7 +89,8 @@ class MealViewSet(viewsets.ModelViewSet):
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        mutable_data = request.data.copy()  # ✅ Make request data mutable
+        """✅ Ensure `food_photo` is properly processed from request.FILES"""
+        mutable_data = request.data.copy()
 
         # ✅ Fetch `food_photo` from request.FILES to avoid missing it
         if 'food_photo' in request.FILES:
@@ -108,19 +109,26 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Update a meal by ID (with nested MealSteps update)"),
         request_body=MealNestedSerializer,
+        consumes=['multipart/form-data'],
         responses={200: MealNestedSerializer()}
     )
     def update(self, request, pk=None, *args, **kwargs):
+        """✅ Ensure `food_photo` is correctly updated"""
         meal = self.get_object()
-        serializer = self.get_serializer(meal, data=request.data)
+        mutable_data = request.data.copy()
+
+        if 'food_photo' in request.FILES:
+            mutable_data['food_photo'] = request.FILES.get('food_photo')
+
+        serializer = self.get_serializer(meal, data=mutable_data, partial=True)
         if serializer.is_valid():
-            serializer.save()  # Uses our custom update() method
+            serializer.save()
             return Response({
                 "message": _("Meal updated successfully"),
                 "meal": serializer.data
             }, status=status.HTTP_200_OK)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
