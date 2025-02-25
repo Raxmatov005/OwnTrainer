@@ -273,7 +273,9 @@ class VerifyCodeView(APIView):
                 description="Verification successful.",
                 examples={
                     "application/json": {
-                        "message": "Verification successful. You can now complete your profile."
+                        "message": "Verification successful. You can now complete your profile.",
+                        "access": "your_access_token",
+                        "refresh": "your_refresh_token"
                     }
                 }
             ),
@@ -309,7 +311,7 @@ class VerifyCodeView(APIView):
 
         # Fetch the verification code from cache
         cached_data = cache.get(f'verification_code_{user.id}')
-        print(f"This is cashed data if it is exists {cached_data}")
+        print(f"This is cached data if it exists: {cached_data}")
         if not cached_data:
             return Response(
                 {"error": _("Verification code expired or invalid.")},
@@ -338,12 +340,18 @@ class VerifyCodeView(APIView):
         # Clear the code from cache
         cache.delete(f'verification_code_{user.id}')
 
+        # ✅ Generate JWT tokens for the user
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+
         return Response(
-            {"message": _("Verification successful. You can now complete your profile.")},
+            {
+                "message": _("Verification successful. You can now complete your profile."),
+                "access": access_token,
+                "refresh": str(refresh)
+            },
             status=status.HTTP_200_OK
         )
-
-
 
 from users_app.swagger_schema import DynamicGoalSchema
 

@@ -44,16 +44,23 @@ class MealViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
+
         if not self.request.user.is_authenticated:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
+
+        # If the user is an admin, return all meals
+        if self.request.user.is_staff:
+            return Meal.objects.all().prefetch_related("steps")
+
+        # For regular users, filter meals assigned to their sessions
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return Meal.objects.none()
-        if not self.request.user.is_staff:
-            sessions = SessionCompletion.objects.filter(user=self.request.user).values_list('session_id', flat=True)
-            return Meal.objects.filter(sessions__id__in=sessions).distinct()
-        return Meal.objects.all()
+
+        return Meal.objects.filter(
+            sessions__program=user_program.program
+        ).distinct().prefetch_related("steps")
 
     @swagger_auto_schema(
         tags=['Meals'],
