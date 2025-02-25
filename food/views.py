@@ -43,39 +43,29 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language, "request": self.request}
 
     def get_queryset(self):
-        """Retrieve meals only if the user has an active subscription."""
-
-        # ✅ Fix for Swagger UI (Handles anonymous users)
-        if getattr(self, "swagger_fake_view", False):
+        # (Your existing logic to filter meals...)
+        if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
 
-        # ✅ Ensure user is authenticated
-        user = self.request.user
-        if not user or not user.is_authenticated:
+        if not self.request.user.is_authenticated:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
 
-        # ✅ Admins can view all meals
-        if user.is_staff:
+        if self.request.user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
 
-        # ✅ Get the active user program
-        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-
+        from users_app.models import UserProgram, UserSubscription
+        user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
             return Meal.objects.none()
-
-        # ✅ Ensure the user has an active subscription before retrieving meals
         has_active_subscription = UserSubscription.objects.filter(
-            user=user,
+            user=self.request.user,
             is_active=True,
             end_date__gte=timezone.now().date()
         ).exists()
-
         if not has_active_subscription:
             return Meal.objects.none()
 
-        # ✅ Fetch meals related to the user's program sessions
         return Meal.objects.filter(
             sessions__program=user_program.program
         ).distinct().prefetch_related("steps")
@@ -100,12 +90,6 @@ class MealViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
-    import json
-    from drf_yasg import openapi
-    from drf_yasg.utils import swagger_auto_schema
-    from rest_framework import status
-    from rest_framework.response import Response
-
     @swagger_auto_schema(
         manual_parameters=[
             openapi.Parameter(
@@ -119,11 +103,11 @@ class MealViewSet(viewsets.ModelViewSet):
             type=openapi.TYPE_OBJECT,
             properties={
                 "meal_data": openapi.Schema(
-                    type=openapi.TYPE_OBJECT,  # ✅ Should be OBJECT, not STRING
-                    description="JSON object containing meal fields (meal_type, food_name, calories, water_content, etc.)"
+                    type=openapi.TYPE_OBJECT,
+                    description="JSON object containing meal fields (meal_type, food_name, calories, water_content, preparation_time, description, video_url)"
                 ),
                 "steps": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,  # ✅ Should be ARRAY for list of steps
+                    type=openapi.TYPE_ARRAY,
                     items=openapi.Schema(
                         type=openapi.TYPE_OBJECT,
                         properties={
@@ -132,48 +116,41 @@ class MealViewSet(viewsets.ModelViewSet):
                             "step_time": openapi.Schema(type=openapi.TYPE_STRING)
                         }
                     ),
-                    description="JSON array containing meal steps (list of {title, text, step_time})"
+                    description="JSON array containing meal steps"
                 )
             },
             required=["meal_data"]
         ),
-        consumes=["multipart/form-data"],  # ✅ Allow mixed file + JSON data
+        consumes=["multipart/form-data"],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        """✅ Handle food_photo as form-data, other fields as JSON"""
         mutable_data = request.data.copy()
 
-        # ✅ Extract `food_photo` from `request.FILES`
+        # Extract file from request.FILES
         food_photo = request.FILES.get("food_photo", None)
 
-        # ✅ Extract JSON fields from form-data (multipart request)
-        meal_data = mutable_data.get("meal_data", "{}")  # Default to empty JSON
-        steps_data = mutable_data.get("steps", "[]")  # Default to empty list
+        # Extract JSON fields from form-data
+        meal_data_str = mutable_data.get("meal_data", "{}")
+        steps_data_str = mutable_data.get("steps", "[]")
 
         try:
-            meal_data = json.loads(meal_data)  # Convert string to JSON
-            steps_data = json.loads(steps_data)  # Convert string to JSON list
+            meal_data = json.loads(meal_data_str)
+            steps_data = json.loads(steps_data_str)
         except json.JSONDecodeError:
             return Response({"error": "Invalid JSON format"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ✅ Merge JSON fields into validated_data
-        meal_data["food_photo"] = food_photo  # Assign uploaded image
-        if steps_data:
-            meal_data["steps"] = steps_data  # Assign steps list if not empty
+        meal_data["food_photo"] = food_photo
+        meal_data["steps"] = steps_data
 
         serializer = self.get_serializer(data=meal_data)
-
         if serializer.is_valid():
             meal = serializer.save()
-
             return Response({
                 "message": _("Meal created successfully"),
                 "meal": serializer.data
             }, status=status.HTTP_201_CREATED)
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealNestedSerializer,
