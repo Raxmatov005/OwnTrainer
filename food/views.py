@@ -89,8 +89,11 @@ class MealViewSet(viewsets.ModelViewSet):
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        mutable_data = request.data.copy()  # ✅ Ensure request data is mutable
-        mutable_data['food_photo'] = request.FILES.get('food_photo', None)  # ✅ Explicitly fetch image
+        mutable_data = request.data.copy()  # ✅ Make request data mutable
+
+        # ✅ Fetch `food_photo` from request.FILES to avoid missing it
+        if 'food_photo' in request.FILES:
+            mutable_data['food_photo'] = request.FILES.get('food_photo')
 
         serializer = self.get_serializer(data=mutable_data)
         if serializer.is_valid():
@@ -98,7 +101,7 @@ class MealViewSet(viewsets.ModelViewSet):
 
             return Response({
                 "message": _("Meal created successfully"),
-                "meal": serializer.data  # ✅ Will now include `food_photo`
+                "meal": serializer.data  # ✅ Should now include `food_photo`
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
