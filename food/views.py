@@ -82,27 +82,64 @@ class MealViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
+
+
     @swagger_auto_schema(
-        tags=['Meals'],
-        request_body=MealNestedSerializer,
-        consumes=['multipart/form-data'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['meal_type', 'food_name', 'calories', 'water_content'],
+            properties={
+                'meal_type': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=['breakfast', 'lunch', 'snack', 'dinner'],
+                    description="Type of the meal"
+                ),
+                'food_name': openapi.Schema(type=openapi.TYPE_STRING, description="Name of the meal"),
+                'calories': openapi.Schema(type=openapi.TYPE_NUMBER, format=openapi.FORMAT_DECIMAL,
+                                           description="Calories for the meal"),
+                'water_content': openapi.Schema(type=openapi.TYPE_NUMBER, format=openapi.FORMAT_DECIMAL,
+                                                description="Water content in ml"),
+                'food_photo': openapi.Schema(
+                    type=openapi.TYPE_FILE,
+                    description="Upload a food photo (image file)"
+                ),  # ✅ Force Swagger to show file upload
+                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER,
+                                                   description="Preparation time in minutes"),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Meal description"),
+                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI,
+                                            description="Video URL"),
+                'steps': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    description="Steps for meal preparation",
+                    items=openapi.Items(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
+                            'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
+                            'step_time': openapi.Schema(type=openapi.TYPE_STRING,
+                                                        description="Time required for this step")
+                        }
+                    )
+                )  # ✅ Nested MealSteps
+            }
+        ),
+        consumes=['multipart/form-data'],  # ✅ Swagger understands file uploads now
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        """✅ Ensure `food_photo` is properly processed from request.FILES"""
+        """✅ Ensure food_photo and meal steps are properly processed"""
         mutable_data = request.data.copy()
 
-        # ✅ Fetch `food_photo` from request.FILES to avoid missing it
+        # ✅ Fetch food_photo from request.FILES explicitly
         if 'food_photo' in request.FILES:
-            mutable_data['food_photo'] = request.FILES.get('food_photo')
+            mutable_data['food_photo'] = request.FILES['food_photo']
 
         serializer = self.get_serializer(data=mutable_data)
         if serializer.is_valid():
             meal = serializer.save()
-
             return Response({
                 "message": _("Meal created successfully"),
-                "meal": serializer.data  # ✅ Should now include `food_photo`
+                "meal": serializer.data
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
