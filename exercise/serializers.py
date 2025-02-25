@@ -25,6 +25,7 @@ def translate_field(instance, field_name, language):
 # Program Serializer
 # ------------------------------
 class ProgramSerializer(serializers.ModelSerializer):
+    total_sessions = serializers.SerializerMethodField()
     class Meta:
         model = Program
         fields = ['id', 'total_sessions', 'program_goal', 'is_active']
