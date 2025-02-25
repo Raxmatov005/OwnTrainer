@@ -89,13 +89,18 @@ class MealViewSet(viewsets.ModelViewSet):
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        mutable_data = request.data.copy()  # ✅ Ensure request data is mutable
+        mutable_data['food_photo'] = request.FILES.get('food_photo', None)  # ✅ Explicitly fetch image
+
+        serializer = self.get_serializer(data=mutable_data)
         if serializer.is_valid():
             meal = serializer.save()
+
             return Response({
                 "message": _("Meal created successfully"),
-                "meal": serializer.data
+                "meal": serializer.data  # ✅ Will now include `food_photo`
             }, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(

@@ -26,6 +26,7 @@ class MealStepSerializer(serializers.ModelSerializer):
 
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
+    food_photo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Meal
@@ -52,17 +53,20 @@ class MealNestedSerializer(serializers.ModelSerializer):
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
 
-        # ✅ Correctly handle food_photo to always include full URL or `None`
+        # ✅ Ensure `food_photo` always has a URL in the response
         if instance.food_photo:
-            if request is not None:
-                data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)
-            else:
-                data['food_photo'] = instance.food_photo.url  # Default relative URL
+            try:
+                if request is not None:
+                    data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)  # Full URL
+                else:
+                    data['food_photo'] = instance.food_photo.url  # Relative URL
+            except ValueError:
+                data['food_photo'] = None  # Prevent crashes if the file path is invalid
         else:
-            data['food_photo'] = None  # Ensure field exists even if no image is set
+            data['food_photo'] = None
 
         return data
-
+    
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
         meal = Meal.objects.create(**validated_data)
