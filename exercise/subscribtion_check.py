@@ -1,6 +1,7 @@
 # Example in any view that requires an active subscription
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
+from users_app.models import UserSubscription
 
 class IsSubscriptionActive(BasePermission):
     """
