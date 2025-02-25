@@ -305,7 +305,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
 
         # Retrieve ExerciseBlocks that belong to the user's sessions
-        return ExerciseBlock.objects.filter(sessions__id__in=user_sessions).distinct()
+        return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
     def get_serializer_context(self):
         language = self.request.query_params.get('lang', 'en')
