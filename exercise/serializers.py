@@ -29,11 +29,13 @@ class ProgramSerializer(serializers.ModelSerializer):
         model = Program
         fields = ['id', 'total_sessions', 'program_goal', 'is_active']
         extra_kwargs = {
-            'total_sessions': {'label': _("Total Sessions")},
             'program_goal': {'label': _("Program Goal")},
             'is_active': {'label': _("Is Active")},
         }
 
+    def get_total_sessions(self, obj):
+        """ Dynamically count sessions instead of storing it in the database. """
+        return obj.sessions.count()
     def to_representation(self, instance):
         data = super().to_representation(instance)
         language = self.context.get('language', 'en')

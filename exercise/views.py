@@ -66,12 +66,15 @@ class ProgramViewSet(viewsets.ModelViewSet):
         responses={201: ProgramSerializer()}
     )
     def create(self, request):
-        serializer = self.get_serializer(data=request.data)
-        language = getattr(request.user, 'language', 'en')
+        """ Remove `total_sessions` from input data since it's now auto-calculated. """
+        request_data = request.data.copy()  # Make a copy to modify safely
+        request_data.pop('total_sessions', None)  # Ensure it's not included
+
+        serializer = self.get_serializer(data=request_data)
         if serializer.is_valid():
             serializer.save()
-            message = translate_text("Program created successfully", language)
-            return Response({"message": message, "program": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response({"message": _("Program created successfully"), "program": serializer.data},
+                            status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
@@ -81,15 +84,17 @@ class ProgramViewSet(viewsets.ModelViewSet):
         responses={200: ProgramSerializer()}
     )
     def update(self, request, pk=None):
+        """ Ensure `total_sessions` is not passed in update requests. """
+        request_data = request.data.copy()
+        request_data.pop('total_sessions', None)
+
         program = self.get_object()
-        serializer = self.get_serializer(program, data=request.data)
-        language = getattr(request.user, 'language', 'en')
+        serializer = self.get_serializer(program, data=request_data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            message = translate_text("Program updated successfully", language)
-            return Response({"message": message, "program": serializer.data}, status=status.HTTP_200_OK)
+            return Response({"message": _("Program updated successfully"), "program": serializer.data},
+                            status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     @swagger_auto_schema(
         tags=['Programs'],
         operation_description=_("Partially update a program by ID"),
