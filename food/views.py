@@ -11,6 +11,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
+import json
 
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
 from food.serializers import (
@@ -85,58 +86,57 @@ class MealViewSet(viewsets.ModelViewSet):
 
 
     @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                name="food_photo",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Upload an image for the meal"
+            )
+        ],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['meal_type', 'food_name', 'calories', 'water_content'],
             properties={
-                'meal_type': openapi.Schema(
+                "meal_data": openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    enum=['breakfast', 'lunch', 'snack', 'dinner'],
-                    description="Type of the meal"
+                    description="JSON string containing meal fields (meal_type, food_name, calories, water_content, etc.)"
                 ),
-                'food_name': openapi.Schema(type=openapi.TYPE_STRING, description="Name of the meal"),
-                'calories': openapi.Schema(type=openapi.TYPE_NUMBER, format=openapi.FORMAT_DECIMAL,
-                                           description="Calories for the meal"),
-                'water_content': openapi.Schema(type=openapi.TYPE_NUMBER, format=openapi.FORMAT_DECIMAL,
-                                                description="Water content in ml"),
-                'food_photo': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Upload a food photo (image file)"
-                ),  # ✅ Force Swagger to show file upload
-                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER,
-                                                   description="Preparation time in minutes"),
-                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Meal description"),
-                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI,
-                                            description="Video URL"),
-                'steps': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    description="Steps for meal preparation",
-                    items=openapi.Items(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING,
-                                                        description="Time required for this step")
-                        }
-                    )
-                )  # ✅ Nested MealSteps
-            }
+                "steps": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="JSON string containing meal steps (list of {title, text, step_time})"
+                )
+            },
+            required=["meal_data"]
         ),
-        consumes=['multipart/form-data'],  # ✅ Swagger understands file uploads now
+        consumes=["multipart/form-data"],  # ✅ Allow mixed file + JSON data
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        """✅ Ensure food_photo and meal steps are properly processed"""
+        """✅ Handle food_photo as form-data, other fields as JSON"""
         mutable_data = request.data.copy()
 
-        # ✅ Fetch food_photo from request.FILES explicitly
-        if 'food_photo' in request.FILES:
-            mutable_data['food_photo'] = request.FILES['food_photo']
+        # ✅ Extract `food_photo` from `request.FILES`
+        food_photo = request.FILES.get("food_photo", None)
 
-        serializer = self.get_serializer(data=mutable_data)
+        # ✅ Extract JSON fields from form-data (multipart request)
+        meal_data = mutable_data.get("meal_data", "{}")  # Default to empty JSON
+        steps_data = mutable_data.get("steps", "[]")  # Default to empty list
+
+        try:
+            meal_data = json.loads(meal_data)  # Convert string to JSON
+            steps_data = json.loads(steps_data)  # Convert string to JSON list
+        except json.JSONDecodeError:
+            return Response({"error": "Invalid JSON format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ✅ Merge JSON fields into validated_data
+        meal_data["food_photo"] = food_photo  # Assign uploaded image
+        meal_data["steps"] = steps_data  # Assign steps list
+
+        serializer = self.get_serializer(data=meal_data)
+
         if serializer.is_valid():
             meal = serializer.save()
+
             return Response({
                 "message": _("Meal created successfully"),
                 "meal": serializer.data
