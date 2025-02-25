@@ -257,6 +257,29 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+
+    def get_queryset(self):
+        """
+        - Admins: Get all ExerciseBlocks
+        - Users: Get only the blocks assigned to their active sessions
+        """
+        user = self.request.user
+
+        # If the user is an admin, return all ExerciseBlocks
+        if user.is_superuser or user.is_staff:
+            return ExerciseBlock.objects.all()
+
+        # Check if the user has an active program
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program or not user_program.is_subscription_active():
+            return ExerciseBlock.objects.none()
+
+        # Get all sessions assigned to the user
+        user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
+
+        # Retrieve ExerciseBlocks that belong to the user's sessions
+        return ExerciseBlock.objects.filter(sessions__id__in=user_sessions).distinct()
+
     def get_serializer_context(self):
         language = self.request.query_params.get('lang', 'en')
         return {
