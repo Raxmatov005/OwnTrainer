@@ -47,13 +47,20 @@ class MealNestedSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get('request', None)
         language = self.context.get("language", "en")
+
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
-        if instance.food_photo and request is not None:
-            data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)
+
+        # ✅ Correctly handle food_photo to always include full URL or `None`
+        if instance.food_photo:
+            if request is not None:
+                data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)
+            else:
+                data['food_photo'] = instance.food_photo.url  # Default relative URL
         else:
-            data['food_photo'] = instance.food_photo.url if instance.food_photo else None
+            data['food_photo'] = None  # Ensure field exists even if no image is set
+
         return data
 
     def create(self, validated_data):
