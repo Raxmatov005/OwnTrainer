@@ -198,25 +198,47 @@ class SessionViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("List sessions for the user. Staff sees all sessions."))
     def list(self, request):
+        """
+        - Admins: Get all sessions.
+        - Users: Get only incomplete sessions from their assigned program.
+        """
         from users_app.models import UserProgram
+
+        # 🔹 If user is an admin, return all sessions
+        if request.user.is_superuser or request.user.is_staff:
+            sessions = Session.objects.all().order_by('session_number')
+            serializer = self.get_serializer(sessions, many=True)
+            return Response({"sessions": serializer.data}, status=status.HTTP_200_OK)
+
+        # 🔹 Check if the user has an active program
         user_program = UserProgram.objects.filter(user=request.user).first()
         if not user_program:
             return Response({"error": _("No active program found for the user.")}, status=404)
+
+        # 🔹 Get the user's incomplete sessions
         incomplete_sc = SessionCompletion.objects.filter(
             user=request.user,
             session__program=user_program.program,
             is_completed=False
         ).select_related('session').order_by('session__session_number')
+
         if not incomplete_sc.exists():
             return Response({"message": _("You have completed all sessions!")}, status=200)
+
+        # 🔹 Get next session number
         next_sc = incomplete_sc.first()
         next_session_number = next_sc.session.session_number
+
+        # 🔹 Get all incomplete session IDs
         session_ids = [sc.session_id for sc in incomplete_sc]
+
+        # 🔹 Retrieve sessions and mark future ones as locked
         sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
         data = [
             {**self.get_serializer(s).data, "locked": (s.session_number > next_session_number)}
             for s in sessions
         ]
+
         return Response({"sessions": data}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(tags=['Sessions'], operation_description=_("Retrieve session by session_number"))
