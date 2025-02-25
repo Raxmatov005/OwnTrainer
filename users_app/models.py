@@ -357,7 +357,7 @@ class Exercise(models.Model):
 
 class ExerciseBlock(models.Model):
     session = models.OneToOneField(
-        Session, on_delete=models.CASCADE, related_name='block'
+        Session, on_delete=models.CASCADE, related_name='block', blank=True, null=True
     )
     block_name = models.CharField(max_length=255)
     block_name_uz = models.CharField(max_length=255, blank=True, null=True)
