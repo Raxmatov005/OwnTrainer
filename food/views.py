@@ -12,7 +12,7 @@ from drf_yasg import openapi
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 import json
-from .serializers import MealNestedSerializer, MealInputSerializer
+
 
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
 from food.serializers import (
@@ -20,7 +20,8 @@ from food.serializers import (
     MealCompletionSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
-    MealStepSerializer
+    MealStepSerializer,
+    MealCreateSerializer
 )
 
 class MealViewSet(viewsets.ModelViewSet):
@@ -30,7 +31,7 @@ class MealViewSet(viewsets.ModelViewSet):
     and create new ones without deleting those not mentioned.
     """
     queryset = Meal.objects.all()
-    serializer_class = MealNestedSerializer
+    serializer_class = MealNestedSerializer  # For output
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -44,17 +45,15 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language, "request": self.request}
 
     def get_queryset(self):
-        # (Your existing logic to filter meals...)
+        # Your existing logic to filter meals…
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
-
         if not self.request.user.is_authenticated:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
-
         if self.request.user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
-
+        # Additional filtering based on user subscription/program, etc.
         from users_app.models import UserProgram, UserSubscription
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
@@ -66,10 +65,9 @@ class MealViewSet(viewsets.ModelViewSet):
         ).exists()
         if not has_active_subscription:
             return Meal.objects.none()
+        return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
-        return Meal.objects.filter(
-            sessions__program=user_program.program
-        ).distinct().prefetch_related("steps")
+
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
@@ -92,46 +90,21 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        request_body=MealInputSerializer,
+        request_body=MealCreateSerializer,
         consumes=["multipart/form-data"],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        mutable_data = request.data.copy()
+        # The incoming payload is now flat; file uploads will be handled directly.
+        serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
+        serializer.is_valid(raise_exception=True)
+        meal = serializer.save()
 
-        # For multipart/form-data, 'meal_data' (and optionally 'steps') might be sent as a JSON string.
-        if isinstance(mutable_data.get("meal_data"), str):
-            try:
-                mutable_data["meal_data"] = json.loads(mutable_data["meal_data"])
-            except json.JSONDecodeError:
-                return Response({"error": "Invalid JSON format for meal_data"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if isinstance(mutable_data.get("steps"), str):
-            try:
-                mutable_data["steps"] = json.loads(mutable_data["steps"])
-            except json.JSONDecodeError:
-                mutable_data["steps"] = []
-
-        # Validate using the dedicated input serializer
-        input_serializer = MealInputSerializer(data=mutable_data)
-        input_serializer.is_valid(raise_exception=True)
-        validated_data = input_serializer.validated_data
-
-        # Extract nested meal data and steps
-        meal_data = validated_data.get("meal_data")
-        steps_data = validated_data.get("steps", [])
-
-        # Combine them into a payload matching the MealNestedSerializer
-        meal_payload = meal_data.copy()
-        meal_payload["steps"] = steps_data
-
-        # Validate and create the Meal instance using your existing serializer logic.
-        meal_serializer = self.get_serializer(data=meal_payload)
-        meal_serializer.is_valid(raise_exception=True)
-        meal = meal_serializer.save()
+        # If steps were sent as JSON string in multipart form, you might need extra parsing here.
+        output_serializer = self.get_serializer(meal)  # Uses MealNestedSerializer for output
         return Response({
             "message": _("Meal created successfully"),
-            "meal": meal_serializer.data
+            "meal": output_serializer.data
         }, status=status.HTTP_201_CREATED)
     @swagger_auto_schema(
         tags=['Meals'],

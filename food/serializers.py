@@ -16,7 +16,9 @@ def translate_field(instance, field_name, language):
 
 
 
-# Existing serializers for output
+
+
+# --- Existing Output Serializers (unchanged) ---
 class MealStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealSteps
@@ -26,10 +28,10 @@ class MealStepSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         language = self.context.get("language", "en")
-        data['title'] = translate_field(instance, 'title', language)
-        data['text'] = translate_field(instance, 'text', language)
+        # your translation logic…
+        data['title'] = getattr(instance, f"title_{language}", instance.title)
+        data['text'] = getattr(instance, f"text_{language}", instance.text)
         return data
-
 
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
@@ -53,18 +55,15 @@ class MealNestedSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        request = self.context.get('request', None)
+        request = self.context.get('request')
         language = self.context.get("language", "en")
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
-        data['food_name'] = translate_field(instance, 'food_name', language)
-        data['description'] = translate_field(instance, 'description', language)
+        data['food_name'] = getattr(instance, f"food_name_{language}", instance.food_name)
+        data['description'] = getattr(instance, f"description_{language}", instance.description)
         if instance.food_photo:
             try:
-                if request is not None:
-                    data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)
-                else:
-                    data['food_photo'] = instance.food_photo.url
-            except ValueError:
+                data['food_photo'] = request.build_absolute_uri(instance.food_photo.url) if request else instance.food_photo.url
+            except Exception:
                 data['food_photo'] = None
         else:
             data['food_photo'] = None
@@ -85,7 +84,7 @@ class MealNestedSerializer(serializers.ModelSerializer):
         if steps_data is not None:
             existing_steps = {step.id: step for step in instance.steps.all()}
             for step_dict in steps_data:
-                step_id = step_dict.get('id', None)
+                step_id = step_dict.get('id')
                 if step_id and step_id in existing_steps:
                     step_instance = existing_steps[step_id]
                     for attr, value in step_dict.items():
@@ -95,10 +94,12 @@ class MealNestedSerializer(serializers.ModelSerializer):
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
 
-
-# --- New Input Serializers for Create Endpoint ---
-
-class MealDataInputSerializer(serializers.ModelSerializer):
+# --- New Create Serializer (flat payload) ---
+class MealCreateSerializer(serializers.ModelSerializer):
+    steps = serializers.ListField(
+        child=serializers.DictField(), required=False,
+        help_text="List of meal steps. Each step should include 'title', 'text' and 'step_time'."
+    )
     food_photo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
@@ -111,23 +112,9 @@ class MealDataInputSerializer(serializers.ModelSerializer):
             'food_photo',
             'preparation_time',
             'description',
-            'video_url'
+            'video_url',
+            'steps'
         ]
-
-
-class MealStepInputSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MealSteps
-        fields = [
-            'title',
-            'text',
-            'step_time'
-        ]
-
-
-class MealInputSerializer(serializers.Serializer):
-    meal_data = MealDataInputSerializer()
-    steps = MealStepInputSerializer(many=True, required=False)
 
 
 class MealCompletionSerializer(serializers.ModelSerializer):
