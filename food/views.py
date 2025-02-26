@@ -14,6 +14,9 @@ from django.shortcuts import get_object_or_404
 import json
 
 
+
+
+
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
 from food.serializers import (
     MealNestedSerializer,
@@ -33,36 +36,46 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Create a new meal with associated steps and a required food photo."),
-        request_body=MealCreateSerializer,  # ✅ Correct way to define request body
+        operation_description="Create a new meal with associated steps and a required food photo.",
+        manual_parameters=[
+            openapi.Parameter('meal_type', openapi.IN_FORM, type=openapi.TYPE_STRING, required=True,
+                              description="Meal type"),
+            openapi.Parameter('food_name', openapi.IN_FORM, type=openapi.TYPE_STRING, required=True,
+                              description="Name of the food"),
+            openapi.Parameter('calories', openapi.IN_FORM, type=openapi.TYPE_NUMBER, required=True,
+                              description="Caloric content"),
+            openapi.Parameter('water_content', openapi.IN_FORM, type=openapi.TYPE_NUMBER, required=True,
+                              description="Water content"),
+            openapi.Parameter('food_photo', openapi.IN_FORM, type=openapi.TYPE_FILE, required=True,
+                              description="Photo of the food"),
+            openapi.Parameter('preparation_time', openapi.IN_FORM, type=openapi.TYPE_INTEGER, required=True,
+                              description="Preparation time"),
+            openapi.Parameter('description', openapi.IN_FORM, type=openapi.TYPE_STRING, required=False,
+                              description="Meal description"),
+            openapi.Parameter('video_url', openapi.IN_FORM, type=openapi.TYPE_STRING, required=False,
+                              description="URL to a video"),
+            openapi.Parameter('steps', openapi.IN_FORM, type=openapi.TYPE_STRING, required=False,
+                              description="JSON array of steps")
+        ],
         consumes=['multipart/form-data'],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
 
-        # Convert 'steps' from JSON string to list of dicts
-        steps_str = data.get('steps')
-        if steps_str:
+        # Convert steps JSON string to list of dicts
+        if 'steps' in data and isinstance(data['steps'], str):
             try:
-                data['steps'] = json.loads(steps_str)
+                data['steps'] = json.loads(data['steps'])
             except json.JSONDecodeError:
-                return Response(
-                    {"error": _("Invalid JSON format for steps.")},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "Invalid JSON format for steps."}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
 
-        return Response(
-            {"meal": serializer.data},
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
-        # ... (rest of the existing code)
+        return Response({"meal": serializer.data}, status=status.HTTP_201_CREATED, headers=headers)
 
     @swagger_auto_schema(
         tags=['Meals'],
