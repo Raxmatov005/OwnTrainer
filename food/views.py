@@ -297,12 +297,6 @@ class MealViewSet(viewsets.ModelViewSet):
                 )
             }
         )
-        @swagger_auto_schema(
-            tags=['Meals'],
-            request_body=MealCreateSerializer,
-            consumes=['multipart/form-data'],
-            responses={200: MealCreateSerializer()}
-        )
         def update(self, request, pk=None, *args, **kwargs):
             """✅ Ensure `food_photo` is correctly updated"""
             meal = self.get_object()
