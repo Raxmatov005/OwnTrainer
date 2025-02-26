@@ -28,46 +28,35 @@ from food.serializers import (
 class MealViewSet(viewsets.ModelViewSet):
     """
     Handles CRUD for Meal along with nested MealSteps.
-    Nested update logic will update existing steps (if an 'id' is provided)
-    and create new ones without deleting those not mentioned.
     """
     queryset = Meal.objects.all()
-    serializer_class = MealCreateSerializer  # For creation/updates
     permission_classes = [IsAuthenticated]
+    # Always include MultiPartParser for all actions
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         """Return appropriate serializer class based on the action"""
-        if self.action in ['list', 'retrieve']:
-            return MealNestedSerializer
-        return MealCreateSerializer
-
-    def get_parser_classes(self):
         if self.action in ['create', 'update', 'partial_update']:
-            return [MultiPartParser, FormParser, JSONParser]
-        return super().get_parser_classes()
+            return MealCreateSerializer
+        return MealNestedSerializer
 
     def get_serializer_context(self):
         language = self.request.query_params.get('lang', 'en')
         return {**super().get_serializer_context(), "language": language, "request": self.request}
 
     def get_queryset(self):
-        # Return no meals if running under swagger view
+        # Your existing queryset logic
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
-        # Ensure user is authenticated (should be guaranteed by IsAuthenticated)
         if not self.request.user.is_authenticated:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
-        # Staff users get all meals with prefetch of steps
         if self.request.user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
-        # Get the active program for the user
         from users_app.models import UserProgram, UserSubscription
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
             return Meal.objects.none()
-        # Check if the user has an active subscription
         has_active_subscription = UserSubscription.objects.filter(
             user=self.request.user,
             is_active=True,
@@ -75,7 +64,6 @@ class MealViewSet(viewsets.ModelViewSet):
         ).exists()
         if not has_active_subscription:
             return Meal.objects.none()
-        # Return meals filtered by the user's program sessions
         return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
     @swagger_auto_schema(
@@ -101,207 +89,234 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Create a new meal with associated steps and a required food photo."),
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'meal_type': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES],
-                    description="Type of the meal (e.g., breakfast, lunch)"
-                ),
-                'food_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the food"
-                ),
-                'calories': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Caloric content (decimal as string)"
-                ),
-                'water_content': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water content in ml (decimal as string)"
-                ),
-                'food_photo': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Required photo of the food"
-                ),
-                'preparation_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Preparation time in minutes"
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the meal"
-                ),
-                'video_url': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="Optional URL to a video"
-                ),
-                'steps': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING, description="Time for this step")
-                        }
-                    ),
-                    description="List of preparation steps"
-                ),
-            },
-            required=['meal_type', 'food_name', 'calories', 'water_content', 'food_photo', 'preparation_time']
-        ),
+        manual_parameters=[
+            openapi.Parameter(
+                'food_photo',
+                openapi.IN_FORM,
+                description="Required photo of the food",
+                type=openapi.TYPE_FILE,
+                required=True
+            ),
+            openapi.Parameter(
+                'meal_type',
+                openapi.IN_FORM,
+                description="Type of the meal (e.g., breakfast, lunch)",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'food_name',
+                openapi.IN_FORM,
+                description="Name of the food",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'calories',
+                openapi.IN_FORM,
+                description="Caloric content (decimal as string)",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'water_content',
+                openapi.IN_FORM,
+                description="Water content in ml (decimal as string)",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'preparation_time',
+                openapi.IN_FORM,
+                description="Preparation time in minutes",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+            openapi.Parameter(
+                'description',
+                openapi.IN_FORM,
+                description="Description of the meal",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'video_url',
+                openapi.IN_FORM,
+                description="Optional URL to a video",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'steps',
+                openapi.IN_FORM,
+                description="JSON array of preparation steps",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
         consumes=['multipart/form-data'],
         responses={
-            201: openapi.Response(
-                description="Successfully created a meal with associated steps.",
-                schema=MealNestedSerializer()
-            )
+            201: MealNestedSerializer()
         }
     )
     def create(self, request, *args, **kwargs):
-        # Explicitly print the request data and files for debugging
-        print("Request DATA:", request.data)
-        print("Request FILES:", request.FILES)
+        # Print debug information
+        print("CREATE VIEW - Request DATA:", request.data)
+        print("CREATE VIEW - Request FILES:", request.FILES)
 
-        serializer = MealCreateSerializer(
-            data=request.data,
-            context=self.get_serializer_context()
-        )
+        # Handle 'steps' JSON string if provided
+        data = request.data.copy()
+        if 'steps' in data and isinstance(data['steps'], str):
+            try:
+                data['steps'] = json.loads(data['steps'])
+            except json.JSONDecodeError:
+                return Response(
+                    {"steps": ["Invalid JSON format"]},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Create serializer with the processed data
+        serializer = MealCreateSerializer(data=data, context=self.get_serializer_context())
+
         if serializer.is_valid():
             meal = serializer.save()
             return Response({
                 "message": _("Meal created successfully"),
                 "meal": MealNestedSerializer(meal, context=self.get_serializer_context()).data
             }, status=status.HTTP_201_CREATED)
+
+        # If validation failed, print errors and return response
+        print("Serializer errors:", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Update an existing meal."),
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'meal_type': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES],
-                    description="Type of the meal (e.g., breakfast, lunch)"
-                ),
-                'food_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the food"
-                ),
-                'calories': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Caloric content (decimal as string)"
-                ),
-                'water_content': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water content in ml (decimal as string)"
-                ),
-                'food_photo': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Photo of the food (optional)"
-                ),
-                'preparation_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Preparation time in minutes"
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the meal"
-                ),
-                'video_url': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="Optional URL to a video"
-                ),
-                'steps': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'id': openapi.Schema(
-                                type=openapi.TYPE_INTEGER,
-                                description="ID of an existing step (for update). Omit for new step."
-                            ),
-                            'title': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Step title"
-                            ),
-                            'text': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Step description"
-                            ),
-                            'step_time': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Time for this step"
-                            )
-                        }
-                    ),
-                    description="List of preparation steps"
-                ),
-            },
-        ),
+        manual_parameters=[
+            openapi.Parameter(
+                'food_photo',
+                openapi.IN_FORM,
+                description="Photo of the food (optional for update)",
+                type=openapi.TYPE_FILE,
+                required=False
+            ),
+            # Include all other parameters similar to create method
+            openapi.Parameter(
+                'meal_type',
+                openapi.IN_FORM,
+                description="Type of the meal (e.g., breakfast, lunch)",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'food_name',
+                openapi.IN_FORM,
+                description="Name of the food",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'calories',
+                openapi.IN_FORM,
+                description="Caloric content (decimal as string)",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'water_content',
+                openapi.IN_FORM,
+                description="Water content in ml (decimal as string)",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'preparation_time',
+                openapi.IN_FORM,
+                description="Preparation time in minutes",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+            openapi.Parameter(
+                'description',
+                openapi.IN_FORM,
+                description="Description of the meal",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'video_url',
+                openapi.IN_FORM,
+                description="Optional URL to a video",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'steps',
+                openapi.IN_FORM,
+                description="JSON array of preparation steps",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+        ],
         consumes=['multipart/form-data'],
         responses={
-            200: openapi.Response(
-                description="Successfully updated the meal and associated steps.",
-                schema=MealNestedSerializer()
-            )
+            200: MealNestedSerializer()
         }
     )
     def update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
 
-        # Debug what's coming in
-        print("Request DATA:", request.data)
-        print("Request FILES:", request.FILES)
+        # Print debug information
+        print("UPDATE VIEW - Request DATA:", request.data)
+        print("UPDATE VIEW - Request FILES:", request.FILES)
 
-        # Create a mutable copy of request.data
-        mutable_data = request.data.copy()
+        # Handle 'steps' JSON string if provided
+        data = request.data.copy()
+        if 'steps' in data and isinstance(data['steps'], str):
+            try:
+                data['steps'] = json.loads(data['steps'])
+            except json.JSONDecodeError:
+                return Response(
+                    {"steps": ["Invalid JSON format"]},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        # Add the file explicitly if present
-        if 'food_photo' in request.FILES:
-            mutable_data['food_photo'] = request.FILES.get('food_photo')
+        # Set partial=True for PATCH method
+        partial = kwargs.pop('partial', False)
 
         serializer = MealCreateSerializer(
             meal,
-            data=mutable_data,
-            partial=kwargs.pop('partial', False),
+            data=data,
+            partial=partial,
             context=self.get_serializer_context()
         )
 
         if serializer.is_valid():
-            serializer.save()
+            meal = serializer.save()
             return Response({
                 "message": _("Meal updated successfully"),
                 "meal": MealNestedSerializer(meal, context=self.get_serializer_context()).data
             }, status=status.HTTP_200_OK)
 
+        # If validation failed, print errors and return response
+        print("Serializer errors:", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(
-        tags=['Meals'],
-        operation_description=_("Partially update a meal by ID"),
-        request_body=MealCreateSerializer,
-        responses={200: MealNestedSerializer()}
-    )
-    def partial_update(self, request, pk=None, *args, **kwargs):
+    def partial_update(self, request, *args, **kwargs):
         kwargs['partial'] = True
-        return self.update(request, pk, *args, **kwargs)
+        return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Delete a meal"),
         responses={204: "No Content"}
     )
-    def destroy(self, request, pk=None, *args, **kwargs):
+    def destroy(self, request, *args, **kwargs):
         meal = self.get_object()
         meal.delete()
         return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
+
+
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """

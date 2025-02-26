@@ -99,19 +99,25 @@ class MealNestedSerializer(serializers.ModelSerializer):
 
 # --- Create (Input) Serializers ---
 
+# --- Create (Input) Serializers ---
+
 class MealStepCreateSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(required=False)  # Make ID optional for updates
+
     class Meta:
         model = MealSteps
-        fields = ['title', 'text', 'step_time']
+        fields = ['id', 'title', 'text', 'step_time']
 
 
 class MealCreateSerializer(serializers.ModelSerializer):
     steps = MealStepCreateSerializer(many=True, required=False)
-    food_photo = serializers.ImageField(required=True)
+    # Explicitly define food_photo field with write_only=False to ensure it's visible
+    food_photo = serializers.ImageField(required=True, write_only=False)
 
     class Meta:
         model = Meal
         fields = [
+            'id',  # Include id field for reference
             'meal_type',
             'food_name',
             'calories',
@@ -122,15 +128,23 @@ class MealCreateSerializer(serializers.ModelSerializer):
             'video_url',
             'steps'
         ]
+        read_only_fields = ['id']
 
     def create(self, validated_data):
+        print("CREATE: Validated data:", validated_data)  # Debug
         steps_data = validated_data.pop('steps', [])
+        # Ensure food_photo is in validated_data
+        if 'food_photo' not in validated_data:
+            raise serializers.ValidationError({"food_photo": "This field is required."})
+
         meal = Meal.objects.create(**validated_data)
         for i, step_data in enumerate(steps_data):
+            step_data.pop('id', None)  # Remove id if present when creating
             MealSteps.objects.create(meal=meal, step_number=i + 1, **step_data)
         return meal
 
     def update(self, instance, validated_data):
+        print("UPDATE: Validated data:", validated_data)  # Debug
         steps_data = validated_data.pop('steps', None)
 
         # Update the meal fields
@@ -142,26 +156,23 @@ class MealCreateSerializer(serializers.ModelSerializer):
         if steps_data is not None:
             existing_steps = {step.id: step for step in instance.steps.all()}
             for step_data in steps_data:
-                step_id = step_data.get('id')
+                step_id = step_data.pop('id', None)
                 if step_id and step_id in existing_steps:
                     # Update existing step
                     step_instance = existing_steps[step_id]
                     for attr, value in step_data.items():
-                        if attr != 'id':  # Skip the ID field
-                            setattr(step_instance, attr, value)
+                        setattr(step_instance, attr, value)
                     step_instance.save()
                 else:
                     # Create new step
                     new_step_number = instance.steps.count() + 1
-                    step_data_without_id = {k: v for k, v in step_data.items() if k != 'id'}
                     MealSteps.objects.create(
                         meal=instance,
                         step_number=new_step_number,
-                        **step_data_without_id
+                        **step_data
                     )
 
         return instance
-
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealCompletion
