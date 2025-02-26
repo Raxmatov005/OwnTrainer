@@ -21,7 +21,7 @@ from food.serializers import (
     CompleteMealSerializer,
     MealDetailSerializer,
     MealStepSerializer,
-    MealCreateSerializer
+
 )
 
 class MealViewSet(viewsets.ModelViewSet):
