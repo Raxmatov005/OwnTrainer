@@ -12,6 +12,7 @@ from drf_yasg import openapi
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 import json
+from .serializers import MealNestedSerializer, MealInputSerializer
 
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
 from food.serializers import (
@@ -69,7 +70,6 @@ class MealViewSet(viewsets.ModelViewSet):
         return Meal.objects.filter(
             sessions__program=user_program.program
         ).distinct().prefetch_related("steps")
-
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
@@ -92,70 +92,47 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "meal_data": openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "meal_type": openapi.Schema(type=openapi.TYPE_STRING, description="Type of the meal"),
-                        "food_name": openapi.Schema(type=openapi.TYPE_STRING, description="Name of the food"),
-                        "calories": openapi.Schema(type=openapi.TYPE_INTEGER, description="Calorie count"),
-                        "water_content": openapi.Schema(type=openapi.TYPE_NUMBER,
-                                                        description="Water content percentage"),
-                        "food_photo": openapi.Schema(type=openapi.TYPE_FILE, description="Image for the meal"),
-                        "preparation_time": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation time"),
-                        "description": openapi.Schema(type=openapi.TYPE_STRING, description="Meal description"),
-                        "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Optional video URL")
-                    },
-                    required=["meal_type", "food_name"]  # Adjust required fields as needed
-                ),
-                "steps": openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            "title": openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                            "text": openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
-                            "step_time": openapi.Schema(type=openapi.TYPE_STRING, description="Duration for the step")
-                        }
-                    ),
-                    description="JSON array containing meal steps"
-                )
-            },
-            required=["meal_data"]
-        ),
+        request_body=MealInputSerializer,
         consumes=["multipart/form-data"],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
         mutable_data = request.data.copy()
 
-        # Extract file from request.FILES
-        food_photo = request.FILES.get("food_photo", None)
+        # For multipart/form-data, 'meal_data' (and optionally 'steps') might be sent as a JSON string.
+        if isinstance(mutable_data.get("meal_data"), str):
+            try:
+                mutable_data["meal_data"] = json.loads(mutable_data["meal_data"])
+            except json.JSONDecodeError:
+                return Response({"error": "Invalid JSON format for meal_data"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract JSON fields from form-data
-        meal_data_str = mutable_data.get("meal_data", "{}")
-        steps_data_str = mutable_data.get("steps", "[]")
+        if isinstance(mutable_data.get("steps"), str):
+            try:
+                mutable_data["steps"] = json.loads(mutable_data["steps"])
+            except json.JSONDecodeError:
+                mutable_data["steps"] = []
 
-        try:
-            meal_data = json.loads(meal_data_str)
-            steps_data = json.loads(steps_data_str)
-        except json.JSONDecodeError:
-            return Response({"error": "Invalid JSON format"}, status=status.HTTP_400_BAD_REQUEST)
+        # Validate using the dedicated input serializer
+        input_serializer = MealInputSerializer(data=mutable_data)
+        input_serializer.is_valid(raise_exception=True)
+        validated_data = input_serializer.validated_data
 
-        meal_data["food_photo"] = food_photo
-        meal_data["steps"] = steps_data
+        # Extract nested meal data and steps
+        meal_data = validated_data.get("meal_data")
+        steps_data = validated_data.get("steps", [])
 
-        serializer = self.get_serializer(data=meal_data)
-        if serializer.is_valid():
-            meal = serializer.save()
-            return Response({
-                "message": _("Meal created successfully"),
-                "meal": serializer.data
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Combine them into a payload matching the MealNestedSerializer
+        meal_payload = meal_data.copy()
+        meal_payload["steps"] = steps_data
 
+        # Validate and create the Meal instance using your existing serializer logic.
+        meal_serializer = self.get_serializer(data=meal_payload)
+        meal_serializer.is_valid(raise_exception=True)
+        meal = meal_serializer.save()
+        return Response({
+            "message": _("Meal created successfully"),
+            "meal": meal_serializer.data
+        }, status=status.HTTP_201_CREATED)
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealNestedSerializer,

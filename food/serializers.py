@@ -12,6 +12,11 @@ def translate_field(instance, field_name, language):
     return val if val else getattr(instance, field_name, '')
 
 
+
+
+
+
+# Existing serializers for output
 class MealStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealSteps
@@ -24,6 +29,7 @@ class MealStepSerializer(serializers.ModelSerializer):
         data['title'] = translate_field(instance, 'title', language)
         data['text'] = translate_field(instance, 'text', language)
         return data
+
 
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
@@ -66,7 +72,6 @@ class MealNestedSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
-        # food_photo will already be in validated_data if passed
         meal = Meal.objects.create(**validated_data)
         for step_dict in steps_data:
             MealSteps.objects.create(meal=meal, **step_dict)
@@ -89,6 +94,41 @@ class MealNestedSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
+
+
+# --- New Input Serializers for Create Endpoint ---
+
+class MealDataInputSerializer(serializers.ModelSerializer):
+    food_photo = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = Meal
+        fields = [
+            'meal_type',
+            'food_name',
+            'calories',
+            'water_content',
+            'food_photo',
+            'preparation_time',
+            'description',
+            'video_url'
+        ]
+
+
+class MealStepInputSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealSteps
+        fields = [
+            'title',
+            'text',
+            'step_time'
+        ]
+
+
+class MealInputSerializer(serializers.Serializer):
+    meal_data = MealDataInputSerializer()
+    steps = MealStepInputSerializer(many=True, required=False)
+
 
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
