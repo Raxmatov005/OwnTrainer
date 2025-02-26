@@ -89,6 +89,7 @@ class MealNestedSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
+
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealCompletion

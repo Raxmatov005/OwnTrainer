@@ -91,14 +91,7 @@ class MealViewSet(viewsets.ModelViewSet):
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter(
-                name="food_photo",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="Upload an image for the meal"
-            )
-        ],
+        tags=['Meals'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -117,6 +110,10 @@ class MealViewSet(viewsets.ModelViewSet):
                         }
                     ),
                     description="JSON array containing meal steps"
+                ),
+                "food_photo": openapi.Schema(
+                    type=openapi.TYPE_FILE,
+                    description="Upload an image for the meal"
                 )
             },
             required=["meal_data"]
