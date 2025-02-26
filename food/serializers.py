@@ -104,10 +104,10 @@ class MealStepCreateSerializer(serializers.ModelSerializer):
         model = MealSteps
         fields = ['title', 'text', 'step_time']
 
+
 class MealCreateSerializer(serializers.ModelSerializer):
-    # Note: The file field is at the root.
     steps = MealStepCreateSerializer(many=True, required=False)
-    food_photo = serializers.ImageField(required=True, allow_null=False)
+    food_photo = serializers.ImageField(required=True)
 
     class Meta:
         model = Meal
@@ -126,10 +126,41 @@ class MealCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
         meal = Meal.objects.create(**validated_data)
-        for step_data in steps_data:
-            MealSteps.objects.create(meal=meal, **step_data)
+        for i, step_data in enumerate(steps_data):
+            MealSteps.objects.create(meal=meal, step_number=i + 1, **step_data)
         return meal
 
+    def update(self, instance, validated_data):
+        steps_data = validated_data.pop('steps', None)
+
+        # Update the meal fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Handle steps if provided
+        if steps_data is not None:
+            existing_steps = {step.id: step for step in instance.steps.all()}
+            for step_data in steps_data:
+                step_id = step_data.get('id')
+                if step_id and step_id in existing_steps:
+                    # Update existing step
+                    step_instance = existing_steps[step_id]
+                    for attr, value in step_data.items():
+                        if attr != 'id':  # Skip the ID field
+                            setattr(step_instance, attr, value)
+                    step_instance.save()
+                else:
+                    # Create new step
+                    new_step_number = instance.steps.count() + 1
+                    step_data_without_id = {k: v for k, v in step_data.items() if k != 'id'}
+                    MealSteps.objects.create(
+                        meal=instance,
+                        step_number=new_step_number,
+                        **step_data_without_id
+                    )
+
+        return instance
 
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
