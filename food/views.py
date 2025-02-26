@@ -70,7 +70,7 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
-        responses={200: MealCreateSerializer(many=True)}
+        responses={200: MealNestedSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
