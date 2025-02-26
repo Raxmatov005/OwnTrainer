@@ -246,10 +246,11 @@ class MealViewSet(viewsets.ModelViewSet):
                         type=openapi.TYPE_STRING,
                         description="Water content in ml (decimal as string)"
                     ),
-                    'food_photo': openapi.Schema(
-                        type=openapi.TYPE_FILE,
-                        description="Photo of the food (optional)"
-                    ),
+                        'food_photo': openapi.Schema(
+                            openapi.IN_FORM,
+                            type=openapi.TYPE_FILE,
+                            description="Photo of the food (optional)"
+                        ),
                     'preparation_time': openapi.Schema(
                         type=openapi.TYPE_INTEGER,
                         description="Preparation time in minutes"
