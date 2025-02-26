@@ -26,207 +26,72 @@ from food.serializers import (
 
 
 
-    class MealViewSet(viewsets.ModelViewSet):
-        # ... (existing code)
+class MealViewSet(viewsets.ModelViewSet):
+    queryset = Meal.objects.all()
+    serializer_class = MealCreateSerializer
+    parser_classes = (MultiPartParser, FormParser)  # ✅ Ensure file uploads work
 
-        @swagger_auto_schema(
-            tags=['Meals'],
-            operation_description=_("Create a new meal with associated steps and a required food photo."),
-            manual_parameters=[
-                openapi.Parameter(
-                    'meal_type', openapi.IN_FORM,
-                    type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES],
-                    required=True,
-                    description=_("Meal type (e.g., breakfast, lunch)")
-                ),
-                openapi.Parameter(
-                    'food_name', openapi.IN_FORM,
-                    type=openapi.TYPE_STRING,
-                    required=True,
-                    description=_("Name of the food")
-                ),
-                openapi.Parameter(
-                    'calories', openapi.IN_FORM,
-                    type=openapi.TYPE_NUMBER,
-                    required=True,
-                    description=_("Caloric content")
-                ),
-                openapi.Parameter(
-                    'water_content', openapi.IN_FORM,
-                    type=openapi.TYPE_NUMBER,
-                    required=True,
-                    description=_("Water content in ml")
-                ),
-                openapi.Parameter(
-                    'food_photo', openapi.IN_FORM,
-                    type=openapi.TYPE_FILE,
-                    required=True,
-                    description=_("Required photo of the food")
-                ),
-                openapi.Parameter(
-                    'preparation_time', openapi.IN_FORM,
-                    type=openapi.TYPE_INTEGER,
-                    required=True,
-                    description=_("Preparation time in minutes")
-                ),
-                openapi.Parameter(
-                    'description', openapi.IN_FORM,
-                    type=openapi.TYPE_STRING,
-                    required=False,
-                    description=_("Meal description")
-                ),
-                openapi.Parameter(
-                    'video_url', openapi.IN_FORM,
-                    type=openapi.TYPE_STRING,
-                    required=False,
-                    description=_("URL to a video")
-                ),
-                openapi.Parameter(
-                    'steps', openapi.IN_FORM,
-                    type=openapi.TYPE_STRING,
-                    required=False,
-                    description=_("JSON array of steps (e.g., [{'title': 'Step 1', 'text': '...', 'step_time': 5}]")
-                ),
-            ],
-            consumes=['multipart/form-data'],
-            responses={201: MealNestedSerializer()}
+    @swagger_auto_schema(
+        tags=['Meals'],
+        operation_description=_("Create a new meal with associated steps and a required food photo."),
+        request_body=MealCreateSerializer,  # ✅ Correct way to define request body
+        consumes=['multipart/form-data'],
+        responses={201: MealNestedSerializer()}
+    )
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+
+        # Convert 'steps' from JSON string to list of dicts
+        steps_str = data.get('steps')
+        if steps_str:
+            try:
+                data['steps'] = json.loads(steps_str)
+            except json.JSONDecodeError:
+                return Response(
+                    {"error": _("Invalid JSON format for steps.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+
+        return Response(
+            {"meal": serializer.data},
+            status=status.HTTP_201_CREATED,
+            headers=headers
         )
-        def create(self, request, *args, **kwargs):
-            data = request.data.copy()
-            # Parse 'steps' from JSON string to list of dicts
-            steps_str = data.get('steps')
-            if steps_str:
-                try:
-                    data['steps'] = json.loads(steps_str)
-                except json.JSONDecodeError:
-                    return Response(
-                        {"error": _("Invalid JSON format for steps.")},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(
-                {"meal": serializer.data},
-                status=status.HTTP_201_CREATED,
-                headers=headers
-            )
-
         # ... (rest of the existing code)
+
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Update an existing meal."),
-        manual_parameters=[
-            openapi.Parameter(
-                'food_photo',
-                openapi.IN_FORM,
-                description="Photo of the food (optional for update)",
-                type=openapi.TYPE_FILE,
-                required=False
-            ),
-            # Include all other parameters similar to create method
-            openapi.Parameter(
-                'meal_type',
-                openapi.IN_FORM,
-                description="Type of the meal (e.g., breakfast, lunch)",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'food_name',
-                openapi.IN_FORM,
-                description="Name of the food",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'calories',
-                openapi.IN_FORM,
-                description="Caloric content (decimal as string)",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'water_content',
-                openapi.IN_FORM,
-                description="Water content in ml (decimal as string)",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'preparation_time',
-                openapi.IN_FORM,
-                description="Preparation time in minutes",
-                type=openapi.TYPE_INTEGER,
-                required=False
-            ),
-            openapi.Parameter(
-                'description',
-                openapi.IN_FORM,
-                description="Description of the meal",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'video_url',
-                openapi.IN_FORM,
-                description="Optional URL to a video",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'steps',
-                openapi.IN_FORM,
-                description="JSON array of preparation steps",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-        ],
+        request_body=MealCreateSerializer,  # ✅ Correct way
         consumes=['multipart/form-data'],
-        responses={
-            200: MealNestedSerializer()
-        }
+        responses={200: MealNestedSerializer()}
     )
-    def update(self, request, pk=None, *args, **kwargs):
+    def update(self, request, *args, **kwargs):
         meal = self.get_object()
-
-        # Print debug information
-        print("UPDATE VIEW - Request DATA:", request.data)
-        print("UPDATE VIEW - Request FILES:", request.FILES)
-
-        # Handle 'steps' JSON string if provided
         data = request.data.copy()
+
+        # Convert 'steps' from JSON string to list of dicts
         if 'steps' in data and isinstance(data['steps'], str):
             try:
                 data['steps'] = json.loads(data['steps'])
             except json.JSONDecodeError:
-                return Response(
-                    {"steps": ["Invalid JSON format"]},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"steps": ["Invalid JSON format"]}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Set partial=True for PATCH method
         partial = kwargs.pop('partial', False)
 
-        serializer = MealCreateSerializer(
-            meal,
-            data=data,
-            partial=partial,
-            context=self.get_serializer_context()
-        )
+        serializer = self.get_serializer(meal, data=data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
 
-        if serializer.is_valid():
-            meal = serializer.save()
-            return Response({
-                "message": _("Meal updated successfully"),
-                "meal": MealNestedSerializer(meal, context=self.get_serializer_context()).data
-            }, status=status.HTTP_200_OK)
-
-        # If validation failed, print errors and return response
-        print("Serializer errors:", serializer.errors)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            "message": _("Meal updated successfully"),
+            "meal": MealNestedSerializer(meal, context=self.get_serializer_context()).data
+        }, status=status.HTTP_200_OK)
 
     def partial_update(self, request, *args, **kwargs):
         kwargs['partial'] = True
