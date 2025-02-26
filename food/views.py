@@ -88,30 +88,96 @@ class MealViewSet(viewsets.ModelViewSet):
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
     # In views.py, within MealViewSet
-    @swagger_auto_schema(
-        tags=['Meals'],
-        operation_description=_("Create a new meal with associated steps and a required food photo"),
-        request_body=MealCreateSerializer,
-        consumes=['multipart/form-data'],
-        responses={
-            201: MealCreateSerializer(),
-            400: openapi.Schema(
+    from drf_yasg import openapi
+    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+    from rest_framework import status
+    from rest_framework.response import Response
+    from django.utils.translation import gettext_lazy as _
+    from .serializers import MealCreateSerializer
+
+    class MealViewSet(viewsets.ModelViewSet):
+        queryset = Meal.objects.all()
+        serializer_class = MealCreateSerializer
+        permission_classes = [IsAuthenticated]
+        parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+        # ... (other methods like get_serializer_context, get_queryset, list, retrieve remain unchanged)
+
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Create a new meal with associated steps and a required food photo"),
+            request_body=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
-                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
-                }
-            )
-        }
-    )
-    def create(self, request, *args, **kwargs):
-        serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
-        serializer.is_valid(raise_exception=True)
-        meal = serializer.save()
-        output_serializer = self.get_serializer(meal)
-        return Response({
-            "message": _("Meal created successfully"),
-            "meal": output_serializer.data
-        }, status=status.HTTP_201_CREATED)
+                    'meal_type': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        enum=[choice[0] for choice in Meal.MEAL_TYPES],
+                        description="Type of the meal (e.g., breakfast, lunch)"
+                    ),
+                    'food_name': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Name of the food"
+                    ),
+                    'calories': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Caloric content (decimal as string)"
+                    ),
+                    'water_content': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Water content in ml (decimal as string)"
+                    ),
+                    'food_photo': openapi.Schema(
+                        type=openapi.TYPE_FILE,
+                        description="Required photo of the food"
+                    ),
+                    'preparation_time': openapi.Schema(
+                        type=openapi.TYPE_INTEGER,
+                        description="Preparation time in minutes"
+                    ),
+                    'description': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Description of the meal"
+                    ),
+                    'video_url': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        format=openapi.FORMAT_URI,
+                        description="Optional URL to a video"
+                    ),
+                    'steps': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
+                                'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
+                                'step_time': openapi.Schema(type=openapi.TYPE_STRING, description="Time for this step")
+                            }
+                        ),
+                        description="List of preparation steps"
+                    ),
+                },
+                required=['meal_type', 'food_name', 'calories', 'water_content', 'food_photo', 'preparation_time']
+            ),
+            consumes=['multipart/form-data'],
+            responses={
+                201: MealCreateSerializer(),
+                400: openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                    }
+                )
+            }
+        )
+        def create(self, request, *args, **kwargs):
+            serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
+            serializer.is_valid(raise_exception=True)
+            meal = serializer.save()
+            output_serializer = self.get_serializer(meal)
+            return Response({
+                "message": _("Meal created successfully"),
+                "meal": output_serializer.data
+            }, status=status.HTTP_201_CREATED)
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealCreateSerializer,
