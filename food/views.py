@@ -31,7 +31,7 @@ class MealViewSet(viewsets.ModelViewSet):
     and create new ones without deleting those not mentioned.
     """
     queryset = Meal.objects.all()
-    serializer_class = MealCreateSerializer  # For output
+    serializer_class = MealNestedSerializer  # For output
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
