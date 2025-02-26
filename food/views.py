@@ -88,25 +88,6 @@ class MealViewSet(viewsets.ModelViewSet):
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
     # In views.py, within MealViewSet
-    from drf_yasg import openapi
-    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-    from rest_framework import status
-    from rest_framework.response import Response
-    from django.utils.translation import gettext_lazy as _
-    from .serializers import MealCreateSerializer
-
-    from django.utils import timezone
-    from django.utils.translation import gettext_lazy as _
-    from rest_framework import status, viewsets
-    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-    from rest_framework.permissions import IsAuthenticated
-    from rest_framework.response import Response
-    from drf_yasg import openapi
-    from drf_yasg.utils import swagger_auto_schema
-
-    from .models import Meal, MealSteps
-    from .serializers import MealCreateSerializer, MealNestedSerializer
-    from users_app.models import UserProgram, UserSubscription
 
     class MealViewSet(viewsets.ModelViewSet):
         """
