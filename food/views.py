@@ -31,7 +31,7 @@ class MealViewSet(viewsets.ModelViewSet):
     and create new ones without deleting those not mentioned.
     """
     queryset = Meal.objects.all()
-    serializer_class = MealNestedSerializer  # For output
+    serializer_class = MealCreateSerializer  # For output
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -70,7 +70,7 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("List all meals for the authenticated user"),
-        responses={200: MealNestedSerializer(many=True)}
+        responses={200: MealCreateSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -80,7 +80,7 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Retrieve a specific meal"),
-        responses={200: MealNestedSerializer()}
+        responses={200: MealCreateSerializer()}
     )
     def retrieve(self, request, pk=None):
         meal = self.get_object()
@@ -117,7 +117,7 @@ class MealViewSet(viewsets.ModelViewSet):
             required=['meal_type', 'food_name', 'calories', 'water_content', 'food_photo', 'preparation_time'],
         ),
         consumes=["multipart/form-data"],
-        responses={201: MealNestedSerializer()}
+        responses={201: MealCreateSerializer()}
     )
     def create(self, request, *args, **kwargs):
         serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
@@ -130,9 +130,9 @@ class MealViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
     @swagger_auto_schema(
         tags=['Meals'],
-        request_body=MealNestedSerializer,
+        request_body=MealCreateSerializer,
         consumes=['multipart/form-data'],
-        responses={200: MealNestedSerializer()}
+        responses={200: MealCreateSerializer()}
     )
     def update(self, request, pk=None, *args, **kwargs):
         """✅ Ensure `food_photo` is correctly updated"""
@@ -155,8 +155,8 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Partially update a meal by ID"),
-        request_body=MealNestedSerializer,
-        responses={200: MealNestedSerializer()}
+        request_body=MealCreateSerializer,
+        responses={200: MealCreateSerializer()}
     )
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
