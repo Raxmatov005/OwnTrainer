@@ -97,23 +97,30 @@ class MealViewSet(viewsets.ModelViewSet):
             properties={
                 "meal_data": openapi.Schema(
                     type=openapi.TYPE_OBJECT,
-                    description="JSON object containing meal fields (meal_type, food_name, calories, water_content, preparation_time, description, video_url)"
+                    properties={
+                        "meal_type": openapi.Schema(type=openapi.TYPE_STRING, description="Type of the meal"),
+                        "food_name": openapi.Schema(type=openapi.TYPE_STRING, description="Name of the food"),
+                        "calories": openapi.Schema(type=openapi.TYPE_INTEGER, description="Calorie count"),
+                        "water_content": openapi.Schema(type=openapi.TYPE_NUMBER,
+                                                        description="Water content percentage"),
+                        "food_photo": openapi.Schema(type=openapi.TYPE_FILE, description="Image for the meal"),
+                        "preparation_time": openapi.Schema(type=openapi.TYPE_STRING, description="Preparation time"),
+                        "description": openapi.Schema(type=openapi.TYPE_STRING, description="Meal description"),
+                        "video_url": openapi.Schema(type=openapi.TYPE_STRING, description="Optional video URL")
+                    },
+                    required=["meal_type", "food_name"]  # Adjust required fields as needed
                 ),
                 "steps": openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Schema(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            "title": openapi.Schema(type=openapi.TYPE_STRING),
-                            "text": openapi.Schema(type=openapi.TYPE_STRING),
-                            "step_time": openapi.Schema(type=openapi.TYPE_STRING)
+                            "title": openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
+                            "text": openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
+                            "step_time": openapi.Schema(type=openapi.TYPE_STRING, description="Duration for the step")
                         }
                     ),
                     description="JSON array containing meal steps"
-                ),
-                "food_photo": openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Upload an image for the meal"
                 )
             },
             required=["meal_data"]
@@ -148,6 +155,7 @@ class MealViewSet(viewsets.ModelViewSet):
                 "meal": serializer.data
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealNestedSerializer,
