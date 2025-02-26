@@ -103,6 +103,7 @@ class MealViewSet(viewsets.ModelViewSet):
             "message": _("Meal created successfully"),
             "meal": output_serializer.data
         }, status=status.HTTP_201_CREATED)
+
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealNestedSerializer,
