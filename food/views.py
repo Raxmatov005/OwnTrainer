@@ -144,7 +144,7 @@ class MealViewSet(viewsets.ModelViewSet):
             ),
             consumes=['multipart/form-data'],
             responses={
-                201: MealCreateSerializer(),
+                201: MealNestedSerializer(),
                 400: openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
@@ -229,8 +229,8 @@ class MealViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Partially update a meal by ID"),
-        request_body=MealCreateSerializer,
-        responses={200: MealCreateSerializer()}
+        request_body=MealNestedSerializer,
+        responses={200: MealNestedSerializer()}
     )
     def partial_update(self, request, pk=None, *args, **kwargs):
         meal = self.get_object()
