@@ -107,7 +107,7 @@ class MealStepCreateSerializer(serializers.ModelSerializer):
 class MealCreateSerializer(serializers.ModelSerializer):
     # Note: The file field is at the root.
     steps = MealStepCreateSerializer(many=True, required=False)
-    food_photo = serializers.ImageField(required=True, allow_null=True)
+    food_photo = serializers.ImageField(required=True, allow_null=False)
 
     class Meta:
         model = Meal
