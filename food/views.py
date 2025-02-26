@@ -95,17 +95,88 @@ class MealViewSet(viewsets.ModelViewSet):
     from django.utils.translation import gettext_lazy as _
     from .serializers import MealCreateSerializer
 
+    from django.utils import timezone
+    from django.utils.translation import gettext_lazy as _
+    from rest_framework import status, viewsets
+    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+    from rest_framework.permissions import IsAuthenticated
+    from rest_framework.response import Response
+    from drf_yasg import openapi
+    from drf_yasg.utils import swagger_auto_schema
+
+    from .models import Meal, MealSteps
+    from .serializers import MealCreateSerializer, MealNestedSerializer
+    from users_app.models import UserProgram, UserSubscription
+
     class MealViewSet(viewsets.ModelViewSet):
+        """
+        Handles CRUD for Meal along with nested MealSteps.
+        Nested update logic will update existing steps (if an 'id' is provided)
+        and create new ones without deleting those not mentioned.
+        """
         queryset = Meal.objects.all()
         serializer_class = MealCreateSerializer
         permission_classes = [IsAuthenticated]
         parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-        # ... (other methods like get_serializer_context, get_queryset, list, retrieve remain unchanged)
+        def get_parser_classes(self):
+            if self.action in ['create', 'update', 'partial_update']:
+                return [MultiPartParser, FormParser, JSONParser]
+            return super().get_parser_classes()
+
+        def get_serializer_context(self):
+            language = self.request.query_params.get('lang', 'en')
+            return {**super().get_serializer_context(), "language": language, "request": self.request}
+
+        def get_queryset(self):
+            # Return no meals if running under swagger view
+            if getattr(self, 'swagger_fake_view', False):
+                return Meal.objects.none()
+            # Ensure user is authenticated (should be guaranteed by IsAuthenticated)
+            if not self.request.user.is_authenticated:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(_("Authentication is required to view meals."))
+            # Staff users get all meals with prefetch of steps
+            if self.request.user.is_staff:
+                return Meal.objects.all().prefetch_related("steps")
+            # Get the active program for the user
+            user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
+            if not user_program:
+                return Meal.objects.none()
+            # Check if the user has an active subscription
+            has_active_subscription = UserSubscription.objects.filter(
+                user=self.request.user,
+                is_active=True,
+                end_date__gte=timezone.now().date()
+            ).exists()
+            if not has_active_subscription:
+                return Meal.objects.none()
+            # Return meals filtered by the user's program sessions
+            return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
         @swagger_auto_schema(
             tags=['Meals'],
-            operation_description=_("Create a new meal with associated steps and a required food photo"),
+            operation_description=_("List all meals for the authenticated user"),
+            responses={200: MealNestedSerializer(many=True)}
+        )
+        def list(self, request, *args, **kwargs):
+            queryset = self.filter_queryset(self.get_queryset())
+            serializer = MealNestedSerializer(queryset, many=True, context=self.get_serializer_context())
+            return Response({"meals": serializer.data}, status=status.HTTP_200_OK)
+
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Retrieve a specific meal"),
+            responses={200: MealNestedSerializer()}
+        )
+        def retrieve(self, request, pk=None):
+            meal = self.get_object()
+            serializer = MealNestedSerializer(meal, context=self.get_serializer_context())
+            return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
+
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Create a new meal with associated steps and a required food photo."),
             request_body=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
@@ -160,67 +231,152 @@ class MealViewSet(viewsets.ModelViewSet):
             ),
             consumes=['multipart/form-data'],
             responses={
-                201: MealCreateSerializer(),
-                400: openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
-                    }
+                201: openapi.Response(
+                    description="Successfully created a meal with associated steps.",
+                    schema=MealNestedSerializer()
                 )
             }
         )
         def create(self, request, *args, **kwargs):
             return super().create(request, *args, **kwargs)
-    @swagger_auto_schema(
-        tags=['Meals'],
-        request_body=MealCreateSerializer,
-        consumes=['multipart/form-data'],
-        responses={200: MealCreateSerializer()}
-    )
-    def update(self, request, pk=None, *args, **kwargs):
-        """✅ Ensure `food_photo` is correctly updated"""
-        meal = self.get_object()
-        mutable_data = request.data.copy()
 
-        if 'food_photo' in request.FILES:
-            mutable_data['food_photo'] = request.FILES.get('food_photo')
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Update an existing meal. "
+                                    "If an existing step ID is provided, that step is updated; "
+                                    "otherwise, new steps are added. Unmentioned steps remain unchanged."),
+            request_body=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'meal_type': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        enum=[choice[0] for choice in Meal.MEAL_TYPES],
+                        description="Type of the meal (e.g., breakfast, lunch)"
+                    ),
+                    'food_name': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Name of the food"
+                    ),
+                    'calories': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Caloric content (decimal as string)"
+                    ),
+                    'water_content': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Water content in ml (decimal as string)"
+                    ),
+                    'food_photo': openapi.Schema(
+                        type=openapi.TYPE_FILE,
+                        description="Photo of the food (optional)"
+                    ),
+                    'preparation_time': openapi.Schema(
+                        type=openapi.TYPE_INTEGER,
+                        description="Preparation time in minutes"
+                    ),
+                    'description': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        description="Description of the meal"
+                    ),
+                    'video_url': openapi.Schema(
+                        type=openapi.TYPE_STRING,
+                        format=openapi.FORMAT_URI,
+                        description="Optional URL to a video"
+                    ),
+                    'steps': openapi.Schema(
+                        type=openapi.TYPE_ARRAY,
+                        items=openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'id': openapi.Schema(
+                                    type=openapi.TYPE_INTEGER,
+                                    description="ID of an existing step (for update). Omit for new step."
+                                ),
+                                'title': openapi.Schema(
+                                    type=openapi.TYPE_STRING,
+                                    description="Step title"
+                                ),
+                                'text': openapi.Schema(
+                                    type=openapi.TYPE_STRING,
+                                    description="Step description"
+                                ),
+                                'step_time': openapi.Schema(
+                                    type=openapi.TYPE_STRING,
+                                    description="Time for this step"
+                                )
+                            }
+                        ),
+                        description="List of preparation steps"
+                    ),
+                }
+            ),
+            responses={
+                200: openapi.Response(
+                    description="Successfully updated the meal and associated steps.",
+                    schema=MealNestedSerializer()
+                )
+            }
+        )
+        @swagger_auto_schema(
+            tags=['Meals'],
+            request_body=MealCreateSerializer,
+            consumes=['multipart/form-data'],
+            responses={200: MealCreateSerializer()}
+        )
+        def update(self, request, pk=None, *args, **kwargs):
+            """✅ Ensure `food_photo` is correctly updated"""
+            meal = self.get_object()
+            mutable_data = request.data.copy()
 
-        serializer = self.get_serializer(meal, data=mutable_data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                "message": _("Meal updated successfully"),
-                "meal": serializer.data
-            }, status=status.HTTP_200_OK)
+            if 'food_photo' in request.FILES:
+                mutable_data['food_photo'] = request.FILES.get('food_photo')
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            serializer = self.get_serializer(
+                meal,
+                data=mutable_data,
+                partial=True,
+                context=self.get_serializer_context()
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    "message": _("Meal updated successfully"),
+                    "meal": serializer.data
+                }, status=status.HTTP_200_OK)
 
-    @swagger_auto_schema(
-        tags=['Meals'],
-        operation_description=_("Partially update a meal by ID"),
-        request_body=MealCreateSerializer,
-        responses={200: MealCreateSerializer()}
-    )
-    def partial_update(self, request, pk=None, *args, **kwargs):
-        meal = self.get_object()
-        serializer = self.get_serializer(meal, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({
-                "message": _("Meal partially updated successfully"),
-                "meal": serializer.data
-            }, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @swagger_auto_schema(
-        tags=['Meals'],
-        operation_description=_("Delete a meal"),
-        responses={204: "No Content"}
-    )
-    def destroy(self, request, pk=None, *args, **kwargs):
-        meal = self.get_object()
-        meal.delete()
-        return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Partially update a meal by ID"),
+            request_body=MealCreateSerializer,
+            responses={200: MealCreateSerializer()}
+        )
+        def partial_update(self, request, pk=None, *args, **kwargs):
+            meal = self.get_object()
+            serializer = self.get_serializer(
+                meal,
+                data=request.data,
+                partial=True,
+                context=self.get_serializer_context()
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    "message": _("Meal partially updated successfully"),
+                    "meal": serializer.data
+                }, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        @swagger_auto_schema(
+            tags=['Meals'],
+            operation_description=_("Delete a meal"),
+            responses={204: "No Content"}
+        )
+        def destroy(self, request, pk=None, *args, **kwargs):
+            meal = self.get_object()
+            meal.delete()
+            return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
+
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """
