@@ -45,7 +45,7 @@ class MealViewSet(viewsets.ModelViewSet):
         return {**super().get_serializer_context(), "language": language, "request": self.request}
 
     def get_queryset(self):
-        # Your existing logic to filter meals…
+        # Your existing filtering logic
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
         if not self.request.user.is_authenticated:
@@ -53,7 +53,6 @@ class MealViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(_("Authentication is required to view meals."))
         if self.request.user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
-        # Additional filtering based on user subscription/program, etc.
         from users_app.models import UserProgram, UserSubscription
         user_program = UserProgram.objects.filter(user=self.request.user, is_active=True).first()
         if not user_program:
@@ -95,12 +94,10 @@ class MealViewSet(viewsets.ModelViewSet):
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        # The incoming payload is now flat; file uploads will be handled directly.
+        # Using the flat payload ensures that food_photo is at the root and shows as a file upload.
         serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         meal = serializer.save()
-
-        # If steps were sent as JSON string in multipart form, you might need extra parsing here.
         output_serializer = self.get_serializer(meal)  # Uses MealNestedSerializer for output
         return Response({
             "message": _("Meal created successfully"),

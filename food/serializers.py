@@ -19,6 +19,12 @@ def translate_field(instance, field_name, language):
 
 
 # --- Existing Output Serializers (unchanged) ---
+from rest_framework import serializers
+from django.utils.translation import gettext_lazy as _
+from .models import Meal, MealSteps
+
+# --- Output Serializers ---
+
 class MealStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealSteps
@@ -28,7 +34,7 @@ class MealStepSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         language = self.context.get("language", "en")
-        # your translation logic…
+        # Example translation logic; adjust as needed
         data['title'] = getattr(instance, f"title_{language}", instance.title)
         data['text'] = getattr(instance, f"text_{language}", instance.text)
         return data
@@ -72,8 +78,8 @@ class MealNestedSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
         meal = Meal.objects.create(**validated_data)
-        for step_dict in steps_data:
-            MealSteps.objects.create(meal=meal, **step_dict)
+        for step_data in steps_data:
+            MealSteps.objects.create(meal=meal, **step_data)
         return meal
 
     def update(self, instance, validated_data):
@@ -83,23 +89,27 @@ class MealNestedSerializer(serializers.ModelSerializer):
         instance.save()
         if steps_data is not None:
             existing_steps = {step.id: step for step in instance.steps.all()}
-            for step_dict in steps_data:
-                step_id = step_dict.get('id')
+            for step_data in steps_data:
+                step_id = step_data.get('id')
                 if step_id and step_id in existing_steps:
                     step_instance = existing_steps[step_id]
-                    for attr, value in step_dict.items():
+                    for attr, value in step_data.items():
                         setattr(step_instance, attr, value)
                     step_instance.save()
                 else:
-                    MealSteps.objects.create(meal=instance, **step_dict)
+                    MealSteps.objects.create(meal=instance, **step_data)
         return instance
 
-# --- New Create Serializer (flat payload) ---
+# --- Create (Input) Serializers ---
+
+class MealStepCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealSteps
+        fields = ['title', 'text', 'step_time']
+
 class MealCreateSerializer(serializers.ModelSerializer):
-    steps = serializers.ListField(
-        child=serializers.DictField(), required=False,
-        help_text="List of meal steps. Each step should include 'title', 'text' and 'step_time'."
-    )
+    # Note: The file field is at the root.
+    steps = MealStepCreateSerializer(many=True, required=False)
     food_photo = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
@@ -115,6 +125,13 @@ class MealCreateSerializer(serializers.ModelSerializer):
             'video_url',
             'steps'
         ]
+
+    def create(self, validated_data):
+        steps_data = validated_data.pop('steps', [])
+        meal = Meal.objects.create(**validated_data)
+        for step_data in steps_data:
+            MealSteps.objects.create(meal=meal, **step_data)
+        return meal
 
 
 class MealCompletionSerializer(serializers.ModelSerializer):
