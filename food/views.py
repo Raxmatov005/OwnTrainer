@@ -87,23 +87,47 @@ class MealViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
+
+
     @swagger_auto_schema(
         tags=['Meals'],
-        request_body=MealCreateSerializer,
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'meal_type': openapi.Schema(type=openapi.TYPE_STRING, enum=[choice[0] for choice in Meal.MEAL_TYPES]),
+                'food_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'calories': openapi.Schema(type=openapi.TYPE_STRING),  # Decimal as string in form-data
+                'water_content': openapi.Schema(type=openapi.TYPE_STRING),
+                'food_photo': openapi.Schema(type=openapi.TYPE_FILE, description="Upload a food photo"),
+                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'description': openapi.Schema(type=openapi.TYPE_STRING),
+                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI),
+                'steps': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'title': openapi.Schema(type=openapi.TYPE_STRING),
+                            'text': openapi.Schema(type=openapi.TYPE_STRING),
+                            'step_time': openapi.Schema(type=openapi.TYPE_STRING),
+                        },
+                    ),
+                ),
+            },
+            required=['meal_type', 'food_name', 'calories', 'water_content', 'food_photo', 'preparation_time'],
+        ),
         consumes=["multipart/form-data"],
         responses={201: MealNestedSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        # Using the flat payload ensures that food_photo is at the root and shows as a file upload.
         serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         meal = serializer.save()
-        output_serializer = self.get_serializer(meal)  # Uses MealNestedSerializer for output
+        output_serializer = self.get_serializer(meal)
         return Response({
             "message": _("Meal created successfully"),
             "meal": output_serializer.data
         }, status=status.HTTP_201_CREATED)
-
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealNestedSerializer,
