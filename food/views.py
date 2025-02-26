@@ -170,14 +170,7 @@ class MealViewSet(viewsets.ModelViewSet):
             }
         )
         def create(self, request, *args, **kwargs):
-            serializer = MealCreateSerializer(data=request.data, context=self.get_serializer_context())
-            serializer.is_valid(raise_exception=True)
-            meal = serializer.save()
-            output_serializer = self.get_serializer(meal)
-            return Response({
-                "message": _("Meal created successfully"),
-                "meal": output_serializer.data
-            }, status=status.HTTP_201_CREATED)
+            return super().create(request, *args, **kwargs)
     @swagger_auto_schema(
         tags=['Meals'],
         request_body=MealCreateSerializer,
