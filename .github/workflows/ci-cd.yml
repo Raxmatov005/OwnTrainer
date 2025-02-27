@@ -1,4 +1,4 @@
-name: Django REST CI/CD
+name: Django REST API CI/CD (Docker)
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
       - main  # Runs on pull requests to the main branch
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"  # Updated to match your server version
+          python-version: "3.12"
 
       - name: Install Dependencies
         run: |
@@ -32,27 +32,39 @@ jobs:
       - name: Run Tests
         run: python manage.py test
 
-  deploy:
-    needs: test  # Run deployment only if tests pass
+  docker-build-and-push:
+    needs: build-and-test
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Log in to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t your-dockerhub-username/your-app-name:latest .
+          docker push your-dockerhub-username/your-app-name:latest
+
+  deploy:
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Deploy to Server
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
+          DOCKER_IMAGE: "your-dockerhub-username/your-app-name:latest"
         run: |
           echo "$SSH_KEY" > deploy_key.pem
           chmod 600 deploy_key.pem
           ssh -i deploy_key.pem $SSH_USER@$SERVER_IP << 'EOF'
-            cd /path/to/your/project
-            git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt
-            python manage.py migrate
-            systemctl restart gunicorn
+            docker pull $DOCKER_IMAGE
+            docker stop my_container || true
+            docker rm my_container || true
+            docker run -d --name my_container -p 8000:8000 $DOCKER_IMAGE
           EOF
