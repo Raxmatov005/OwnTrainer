@@ -9,7 +9,7 @@ from datetime import timedelta
 from threading import Timer
 from django.utils.timezone import now
 from celery import shared_task
-from drf_extra_fields import Base64ImageField
+from drf_extra_fields.fields import Base64ImageField
 
 translator = Translator()
 
