@@ -282,7 +282,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [MultiPartParser, FormParser]
 
 
     def get_queryset(self):
