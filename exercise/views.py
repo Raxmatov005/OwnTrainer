@@ -396,8 +396,8 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     #         )
     #     }
     # )
-    def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+    # def create(self, request, *args, **kwargs):
+    #     return super().create(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Update an existing ExerciseBlock. "
