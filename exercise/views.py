@@ -282,7 +282,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [MultiPartParser, FormParser]
 
 
     def get_queryset(self):
@@ -397,7 +397,31 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     #     }
     # )
     # def create(self, request, *args, **kwargs):
+    #
     #     return super().create(request, *args, **kwargs)
+    def create(self, request, *args, **kwargs):
+        # Extract and parse nested JSON from 'nested_json' if available
+        nested_str = request.data.get('nested_json')
+        if nested_str:
+            try:
+                nested_dict = json.loads(nested_str)
+            except json.JSONDecodeError:
+                return Response({"error": "Invalid JSON format in 'nested_json'"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            nested_dict = {}
+
+        # Combine parsed JSON data with file uploads
+        combined_data = {
+            **nested_dict,
+            'block_image': request.FILES.get('block_image')
+        }
+
+        serializer = self.get_serializer(data=combined_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # Return a response with the newly created object
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @swagger_auto_schema(
         operation_description="Update an existing ExerciseBlock. "
