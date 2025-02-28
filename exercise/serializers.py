@@ -65,21 +65,21 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
 class NestedExerciseBlockSerializer(serializers.ModelSerializer):
     # Nested exercises that can be created or updated alongside the block.
     exercises = NestedExerciseSerializer(many=True, required=False)
-    block_image = serializers.ImageField(required=False, allow_null=True)
     class Meta:
         model = ExerciseBlock
-        fields = [
-            'id',
-            'block_name',
-            'block_image',
-            'block_kkal',
-            'block_water_amount',
-            'description',
-            'video_url',
-            'block_time',
-            'calories_burned',
-            'exercises'
-        ]
+        # fields = [
+        #     'id',
+        #     'block_name',
+        #     'block_image',
+        #     'block_kkal',
+        #     'block_water_amount',
+        #     'description',
+        #     'video_url',
+        #     'block_time',
+        #     'calories_burned',
+        #     'exercises'
+        # ]
+        fields = '__all__'
         read_only_fields = ['id']
 
     def to_representation(self, instance):

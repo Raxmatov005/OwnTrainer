@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment="." />
+    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -198,39 +200,8 @@
       <workItem from="1740400981618" duration="1586000" />
       <workItem from="1740477651085" duration="8770000" />
       <workItem from="1740506858942" duration="2403000" />
-      <workItem from="1740541666080" duration="13246000" />
-    </task>
-    <task id="LOCAL-00083" summary=".">
-      <option name="closed" value="true" />
-      <created>1740377161818</created>
-      <option name="number" value="00083" />
-      <option name="presentableId" value="LOCAL-00083" />
-      <option name="project" value="LOCAL" />
-      <updated>1740377161818</updated>
-    </task>
-    <task id="LOCAL-00084" summary=".">
-      <option name="closed" value="true" />
-      <created>1740377692800</created>
-      <option name="number" value="00084" />
-      <option name="presentableId" value="LOCAL-00084" />
-      <option name="project" value="LOCAL" />
-      <updated>1740377692800</updated>
-    </task>
-    <task id="LOCAL-00085" summary=".">
-      <option name="closed" value="true" />
-      <created>1740379439992</created>
-      <option name="number" value="00085" />
-      <option name="presentableId" value="LOCAL-00085" />
-      <option name="project" value="LOCAL" />
-      <updated>1740379439992</updated>
-    </task>
-    <task id="LOCAL-00086" summary=".">
-      <option name="closed" value="true" />
-      <created>1740381586635</created>
-      <option name="number" value="00086" />
-      <option name="presentableId" value="LOCAL-00086" />
-      <option name="project" value="LOCAL" />
-      <updated>1740381586637</updated>
+      <workItem from="1740541666080" duration="15341000" />
+      <workItem from="1740654551556" duration="1136000" />
     </task>
     <task id="LOCAL-00087" summary=".">
       <option name="closed" value="true" />
@@ -592,7 +563,39 @@
       <option name="project" value="LOCAL" />
       <updated>1740556796689</updated>
     </task>
-    <option name="localTasksCounter" value="132" />
+    <task id="LOCAL-00132" summary=".">
+      <option name="closed" value="true" />
+      <created>1740556886969</created>
+      <option name="number" value="00132" />
+      <option name="presentableId" value="LOCAL-00132" />
+      <option name="project" value="LOCAL" />
+      <updated>1740556886969</updated>
+    </task>
+    <task id="LOCAL-00133" summary=".">
+      <option name="closed" value="true" />
+      <created>1740556975949</created>
+      <option name="number" value="00133" />
+      <option name="presentableId" value="LOCAL-00133" />
+      <option name="project" value="LOCAL" />
+      <updated>1740556975949</updated>
+    </task>
+    <task id="LOCAL-00134" summary=".">
+      <option name="closed" value="true" />
+      <created>1740557094137</created>
+      <option name="number" value="00134" />
+      <option name="presentableId" value="LOCAL-00134" />
+      <option name="project" value="LOCAL" />
+      <updated>1740557094137</updated>
+    </task>
+    <task id="LOCAL-00135" summary=".">
+      <option name="closed" value="true" />
+      <created>1740557160956</created>
+      <option name="number" value="00135" />
+      <option name="presentableId" value="LOCAL-00135" />
+      <option name="project" value="LOCAL" />
+      <updated>1740557160956</updated>
+    </task>
+    <option name="localTasksCounter" value="136" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -612,6 +615,11 @@
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/register/urls.py</url>
           <option name="timeStamp" value="1" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/food/serializers.py</url>
+          <line>104</line>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

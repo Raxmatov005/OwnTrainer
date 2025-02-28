@@ -314,88 +314,88 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             "language": language,
             "request": self.request
         }
-
-    @swagger_auto_schema(
-        operation_description="Create a new ExerciseBlock with an optional image and nested exercises. "
-                              "IDs for the block and exercises are assigned automatically by the database. "
-                              "Sequence numbers for exercises are also auto-assigned based on order in the payload.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'block_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the exercise block."
-                ),
-                'block_image': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Optional image file for the exercise block."
-                ),
-                'block_kkal': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Approx total kkal (decimal)."
-                ),
-                'block_water_amount': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water amount in ml (decimal)."
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the exercise block."
-                ),
-                'video_url': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="URL for an associated video (optional)."
-                ),
-                'block_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Estimated total time in minutes."
-                ),
-                'calories_burned': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Total calories burned in this block (decimal)."
-                ),
-                'exercises': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Items(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            # id is read_only; if provided, it updates existing exercise
-                            'id': openapi.Schema(
-                                type=openapi.TYPE_INTEGER,
-                                description="(Optional) ID of an existing exercise to update."
-                            ),
-                            'name': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Name of the exercise."
-                            ),
-                            'exercise_time': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Duration in HH:MM:SS format, e.g. '00:05:00'."
-                            ),
-                            'description': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Description of the exercise."
-                            ),
-                            'image': openapi.Schema(
-                                type=openapi.TYPE_FILE,
-                                description="Optional image file for the exercise."
-                            ),
-                            # sequence_number is auto-assigned, so we omit it from the request.
-                        }
-                    ),
-                    description="Optional list of exercises to create/update with this block."
-                ),
-            },
-            required=['block_name']  # or any other fields you require
-        ),
-        responses={
-            201: openapi.Response(
-                description="Successfully created an ExerciseBlock with nested exercises.",
-                schema=NestedExerciseBlockSerializer()
-            )
-        }
-    )
+    #
+    # @swagger_auto_schema(
+    #     operation_description="Create a new ExerciseBlock with an optional image and nested exercises. "
+    #                           "IDs for the block and exercises are assigned automatically by the database. "
+    #                           "Sequence numbers for exercises are also auto-assigned based on order in the payload.",
+    #     request_body=openapi.Schema(
+    #         type=openapi.TYPE_OBJECT,
+    #         properties={
+    #             'block_name': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 description="Name of the exercise block."
+    #             ),
+    #             'block_image': openapi.Schema(
+    #                 type=openapi.TYPE_FILE,
+    #                 description="Optional image file for the exercise block."
+    #             ),
+    #             'block_kkal': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 description="Approx total kkal (decimal)."
+    #             ),
+    #             'block_water_amount': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 description="Water amount in ml (decimal)."
+    #             ),
+    #             'description': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 description="Description of the exercise block."
+    #             ),
+    #             'video_url': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 format=openapi.FORMAT_URI,
+    #                 description="URL for an associated video (optional)."
+    #             ),
+    #             'block_time': openapi.Schema(
+    #                 type=openapi.TYPE_INTEGER,
+    #                 description="Estimated total time in minutes."
+    #             ),
+    #             'calories_burned': openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 description="Total calories burned in this block (decimal)."
+    #             ),
+    #             'exercises': openapi.Schema(
+    #                 type=openapi.TYPE_ARRAY,
+    #                 items=openapi.Items(
+    #                     type=openapi.TYPE_OBJECT,
+    #                     properties={
+    #                         # id is read_only; if provided, it updates existing exercise
+    #                         'id': openapi.Schema(
+    #                             type=openapi.TYPE_INTEGER,
+    #                             description="(Optional) ID of an existing exercise to update."
+    #                         ),
+    #                         'name': openapi.Schema(
+    #                             type=openapi.TYPE_STRING,
+    #                             description="Name of the exercise."
+    #                         ),
+    #                         'exercise_time': openapi.Schema(
+    #                             type=openapi.TYPE_STRING,
+    #                             description="Duration in HH:MM:SS format, e.g. '00:05:00'."
+    #                         ),
+    #                         'description': openapi.Schema(
+    #                             type=openapi.TYPE_STRING,
+    #                             description="Description of the exercise."
+    #                         ),
+    #                         'image': openapi.Schema(
+    #                             type=openapi.TYPE_FILE,
+    #                             description="Optional image file for the exercise."
+    #                         ),
+    #                         # sequence_number is auto-assigned, so we omit it from the request.
+    #                     }
+    #                 ),
+    #                 description="Optional list of exercises to create/update with this block."
+    #             ),
+    #         },
+    #         required=['block_name']  # or any other fields you require
+    #     ),
+    #     responses={
+    #         201: openapi.Response(
+    #             description="Successfully created an ExerciseBlock with nested exercises.",
+    #             schema=NestedExerciseBlockSerializer()
+    #         )
+    #     }
+    # )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
