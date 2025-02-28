@@ -9,6 +9,7 @@ from datetime import timedelta
 from threading import Timer
 from django.utils.timezone import now
 from celery import shared_task
+from drf_extra_fields import Base64ImageField
 
 translator = Translator()
 
@@ -65,7 +66,7 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
 class NestedExerciseBlockSerializer(serializers.ModelSerializer):
     # Nested exercises that can be created or updated alongside the block.
     exercises = NestedExerciseSerializer(many=True, required=False)
-    block_image = serializers.ImageField(required=False)
+    block_image = Base64ImageField(required=False)
     class Meta:
         model = ExerciseBlock
         fields = [
