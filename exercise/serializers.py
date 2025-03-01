@@ -45,14 +45,9 @@ class ProgramSerializer(serializers.ModelSerializer):
         return data
 
 
-# ------------------------------
-# Nested Exercise Serializer
-# ------------------------------
 class NestedExerciseSerializer(serializers.ModelSerializer):
     """
-    Includes the 'image' field for actual code usage,
-    but we won't reference it in the OpenAPI array schema
-    to prevent drf-yasg crash.
+    Includes the `image` field, so each exercise can have its own image.
     """
     image = serializers.ImageField(required=False, allow_null=True)
 
@@ -69,16 +64,13 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
         return data
 
 
-# ------------------------------
-# Nested ExerciseBlock Serializer
-# ------------------------------
 class NestedExerciseBlockSerializer(serializers.ModelSerializer):
     """
-    For the block, we do a top-level 'block_image' field,
-    and also support nested 'exercises' (which can include 'image' in code).
+    Allows a top-level `block_image` plus a nested array of `exercises`,
+    each of which can have an `image`.
     """
-    exercises = NestedExerciseSerializer(many=True, required=False)
     block_image = serializers.ImageField(required=False, allow_null=True)
+    exercises = NestedExerciseSerializer(many=True, required=False)
 
     class Meta:
         model = ExerciseBlock
@@ -106,7 +98,6 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         exercises_data = validated_data.pop('exercises', [])
         block = ExerciseBlock.objects.create(**validated_data)
-        # Create nested exercises
         for idx, ex_data in enumerate(exercises_data, start=1):
             ex_data['sequence_number'] = idx
             exercise = Exercise.objects.create(**ex_data)
@@ -124,7 +115,6 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
             for idx, ex_data in enumerate(exercises_data, start=1):
                 ex_id = ex_data.get('id')
                 if ex_id and ex_id in existing_exercises:
-                    # update existing exercise
                     exercise_instance = existing_exercises[ex_id]
                     for field, val in ex_data.items():
                         if field == 'id':
@@ -133,7 +123,6 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
                     exercise_instance.sequence_number = idx
                     exercise_instance.save()
                 else:
-                    # create new exercise
                     ex_data['sequence_number'] = idx
                     new_exercise = Exercise.objects.create(**ex_data)
                     instance.exercises.add(new_exercise)
