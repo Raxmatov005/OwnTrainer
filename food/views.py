@@ -24,11 +24,15 @@ from food.serializers import (
 
 )
 
-
 class MealViewSet(viewsets.ModelViewSet):
+    """
+    Admins can create/update. Non-admins (with subscription) can read.
+    We define create/update/partial_update with form-data via manual_parameters,
+    so drf-yasg won't conflict.
+    """
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
-    permission_classes = [IsAuthenticated]  # or [permissions.IsAuthenticated, IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated]  # Or a custom IsAdminOrReadOnly
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -65,6 +69,9 @@ class MealViewSet(viewsets.ModelViewSet):
             "request": self.request
         }
 
+    # ---------------------------------------------
+    # LIST, RETRIEVE (pure read ops, no changes here)
+    # ---------------------------------------------
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description="List all meals (only for staff or valid subscription user).",
@@ -85,41 +92,72 @@ class MealViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(meal)
         return Response({"meal": serializer.data}, status=status.HTTP_200_OK)
 
+    # ---------------------------------------------
+    # CREATE (multipart/form-data, manual parameters)
+    # ---------------------------------------------
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Create a new meal with optional 'food_photo' and steps.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'meal_type': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES]
-                ),
-                'food_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'calories': openapi.Schema(type=openapi.TYPE_STRING),
-                'water_content': openapi.Schema(type=openapi.TYPE_STRING),
-                'food_photo': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Optional meal photo"
-                ),
-                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'description': openapi.Schema(type=openapi.TYPE_STRING),
-                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI),
-                'steps': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'title': openapi.Schema(type=openapi.TYPE_STRING),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING),
-                        }
-                    )
-                ),
-            },
-            required=['meal_type', 'food_name', 'calories', 'water_content', 'preparation_time']
-        ),
-        consumes=['multipart/form-data'],
+        operation_description="Create a new Meal (admins only) with optional 'food_photo' and nested steps. "
+                              "Send everything as multipart/form-data. For `steps`, pass a JSON string. "
+                              "Example: steps=[{\"title\":\"Step1\",\"text\":\"desc\"}, ...]. ",
+        request_body=None,
+        consumes=["multipart/form-data"],
+        manual_parameters=[
+            openapi.Parameter(
+                name='meal_type',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Meal type (e.g. breakfast, lunch, etc.)"
+            ),
+            openapi.Parameter(
+                name='food_name',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Name of the food"
+            ),
+            openapi.Parameter(
+                name='calories',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Caloric content"
+            ),
+            openapi.Parameter(
+                name='water_content',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Water content in ml"
+            ),
+            openapi.Parameter(
+                name='food_photo',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Optional meal photo"
+            ),
+            openapi.Parameter(
+                name='preparation_time',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_INTEGER,
+                description="Preparation time (minutes)"
+            ),
+            openapi.Parameter(
+                name='description',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Meal description"
+            ),
+            openapi.Parameter(
+                name='video_url',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Optional video URL"
+            ),
+            openapi.Parameter(
+                name='steps',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="JSON array of step objects. e.g. [{\"title\":\"\",\"text\":\"\",\"step_time\":\"\"}]"
+            ),
+        ],
         responses={
             201: openapi.Response(description="Meal created", schema=MealNestedSerializer())
         }
@@ -129,41 +167,72 @@ class MealViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
+    # ---------------------------------------------
+    # UPDATE (multipart/form-data, manual parameters)
+    # ---------------------------------------------
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Update a Meal. You can upload a new 'food_photo'. Steps are updated/created as provided.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'meal_type': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES]
-                ),
-                'food_name': openapi.Schema(type=openapi.TYPE_STRING),
-                'calories': openapi.Schema(type=openapi.TYPE_STRING),
-                'water_content': openapi.Schema(type=openapi.TYPE_STRING),
-                'food_photo': openapi.Schema(
-                    type=openapi.TYPE_FILE,
-                    description="Replace or upload a new meal photo"
-                ),
-                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'description': openapi.Schema(type=openapi.TYPE_STRING),
-                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI),
-                'steps': openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(
-                        type=openapi.TYPE_OBJECT,
-                        properties={
-                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                            'title': openapi.Schema(type=openapi.TYPE_STRING),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING),
-                        }
-                    )
-                ),
-            }
-        ),
-        consumes=['multipart/form-data'],
+        operation_description="Update a Meal (admins only). You can upload a new `food_photo`. Steps are updated/created as provided. "
+                              "Send everything as multipart/form-data. For `steps`, pass a JSON array string. "
+                              "If a step includes 'id', that step is updated; otherwise new steps are created.",
+        request_body=None,
+        consumes=["multipart/form-data"],
+        manual_parameters=[
+            openapi.Parameter(
+                name='meal_type',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated meal type"
+            ),
+            openapi.Parameter(
+                name='food_name',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated food name"
+            ),
+            openapi.Parameter(
+                name='calories',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated calories"
+            ),
+            openapi.Parameter(
+                name='water_content',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated water_content in ml"
+            ),
+            openapi.Parameter(
+                name='food_photo',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Replace or upload new meal photo"
+            ),
+            openapi.Parameter(
+                name='preparation_time',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_INTEGER,
+                description="Updated prep time in minutes"
+            ),
+            openapi.Parameter(
+                name='description',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated meal description"
+            ),
+            openapi.Parameter(
+                name='video_url',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated video URL"
+            ),
+            openapi.Parameter(
+                name='steps',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="JSON array of steps. e.g. [{\"id\":123, \"title\":\"UpdatedTitle\"}, ...]"
+            ),
+        ],
         responses={
             200: openapi.Response(description="Meal updated", schema=MealNestedSerializer())
         }
@@ -173,17 +242,89 @@ class MealViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, pk, *args, **kwargs)
 
+    # ---------------------------------------------
+    # PARTIAL UPDATE
+    # ---------------------------------------------
     @swagger_auto_schema(
+        method='patch',
         tags=['Meals'],
-        operation_description="Partially update a Meal by ID (admins only).",
-        request_body=MealNestedSerializer,
-        responses={200: MealNestedSerializer()}
+        operation_description="Partially update a Meal (admins only). You can update just certain fields, including uploading a new `food_photo`. "
+                              "Send multipart/form-data. For steps, pass a JSON array string if you want to update them. "
+                              "If a step item includes 'id', that step is updated; otherwise new steps are created.",
+        request_body=None,
+        consumes=['multipart/form-data'],
+        manual_parameters=[
+            openapi.Parameter(
+                name='meal_type',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated meal type (optional)"
+            ),
+            openapi.Parameter(
+                name='food_name',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated food name"
+            ),
+            openapi.Parameter(
+                name='calories',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated calories"
+            ),
+            openapi.Parameter(
+                name='water_content',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated water content in ml"
+            ),
+            openapi.Parameter(
+                name='food_photo',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Replace or upload new meal photo"
+            ),
+            openapi.Parameter(
+                name='preparation_time',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_INTEGER,
+                description="Updated preparation time"
+            ),
+            openapi.Parameter(
+                name='description',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated meal description"
+            ),
+            openapi.Parameter(
+                name='video_url',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated video URL"
+            ),
+            openapi.Parameter(
+                name='steps',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="JSON array of steps to create/update. e.g. [{\"id\":123,\"title\":\"newTitle\"},...]"
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Meal partially updated",
+                schema=MealNestedSerializer()
+            )
+        }
     )
-    def partial_update(self, request, pk=None, *args, **kwargs):
+    @action(detail=True, methods=['patch'], url_path='partial-update', parser_classes=[MultiPartParser, FormParser])
+    def partial_update_meal(self, request, pk=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, pk, *args, **kwargs)
 
+    # ---------------------------------------------
+    # DESTROY
+    # ---------------------------------------------
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description="Delete a Meal by ID (admins only).",
@@ -194,7 +335,9 @@ class MealViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, pk, *args, **kwargs)
 
-    # Optionally, a separate custom endpoint to upload photo alone
+    # ---------------------------------------------
+    # (Optional) UPLOAD PHOTO ENDPOINT
+    # ---------------------------------------------
     @swagger_auto_schema(
         method='patch',
         tags=['Meals'],

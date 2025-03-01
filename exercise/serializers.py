@@ -115,6 +115,7 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
             for idx, ex_data in enumerate(exercises_data, start=1):
                 ex_id = ex_data.get('id')
                 if ex_id and ex_id in existing_exercises:
+                    # Update existing exercise
                     exercise_instance = existing_exercises[ex_id]
                     for field, val in ex_data.items():
                         if field == 'id':
@@ -123,12 +124,12 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
                     exercise_instance.sequence_number = idx
                     exercise_instance.save()
                 else:
+                    # Create new exercise
                     ex_data['sequence_number'] = idx
                     new_exercise = Exercise.objects.create(**ex_data)
                     instance.exercises.add(new_exercise)
 
         return instance
-
 class SessionPKSerializer(serializers.ModelSerializer):
     # Instead of nested data, use primary key references.
     block = serializers.PrimaryKeyRelatedField(

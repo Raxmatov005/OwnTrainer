@@ -28,6 +28,7 @@ class MealStepSerializer(serializers.ModelSerializer):
         data['text'] = translate_field(instance, 'text', language)
         return data
 
+
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
     food_photo = serializers.ImageField(required=False, allow_null=True)
@@ -53,7 +54,6 @@ class MealNestedSerializer(serializers.ModelSerializer):
         request = self.context.get('request', None)
         language = self.context.get("language", "en")
 
-        # meal_type translation or fallback
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
@@ -96,7 +96,6 @@ class MealNestedSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
-
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealCompletion

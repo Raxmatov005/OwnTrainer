@@ -276,11 +276,10 @@ class SessionViewSet(viewsets.ModelViewSet):
         return Response({"message": _("Today's session has been reset successfully.")}, status=200)
 
 
-
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
-    # Only admins can create/update, normal users can read if subscription active
+    # Only admins can create/update, normal users can read if subscription is active
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -310,11 +309,11 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     # CREATE
     # --------------------------
     @swagger_auto_schema(
-        request_body=None,  # important: we do not want drf-yasg to treat the default serializer as request_body
+        request_body=None,  # drf-yasg won't try to treat the default serializer as request_body
         operation_description=(
-            "Create a new ExerciseBlock with optional 'block_image' and nested exercises. "
-            "Each nested exercise can have an 'image' if needed. "
-            "Send everything as multipart/form-data. For the 'exercises' field, pass a JSON string. "
+            "Create a new ExerciseBlock (admins only) with optional `block_image` and nested exercises. "
+            "Each nested exercise can have an `image`. "
+            "Send everything as multipart/form-data. For the `exercises` field, pass a JSON string. "
             "Example: exercises=[{\"name\":\"Push Ups\",\"description\":\"desc\"}, ...]. "
             "Then for images: exercises[0].image=@file in your form."
         ),
@@ -387,6 +386,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         }
     )
     def create(self, request, *args, **kwargs):
+        # Staff check
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
     # --------------------------
@@ -395,8 +397,8 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         request_body=None,  # remove conflicts with manual form parameters
         operation_description=(
-            "Update an existing ExerciseBlock. "
-            "You can replace 'block_image'. For exercises, pass a JSON array in `exercises`. "
+            "Update an existing ExerciseBlock (admins only). "
+            "You can replace `block_image`. For exercises, pass a JSON array in `exercises`. "
             "If an exercise has an 'id', it's updated; otherwise it's created."
         ),
         consumes=["multipart/form-data"],
@@ -466,14 +468,113 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         }
     )
     def update(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
+
+    # --------------------------
+    # PARTIAL UPDATE
+    # --------------------------
+    @swagger_auto_schema(
+        method='patch',
+        request_body=None,
+        operation_description=(
+            "Partially update an existing ExerciseBlock (admins only). "
+            "For example, you can send only `block_name` or only `exercises`. "
+            "Send multipart/form-data if you want to update `block_image` or nested exercise images. "
+            "Example: exercises=[{\"id\":123,\"name\":\"NewName\",\"image\":...},...]"
+        ),
+        consumes=["multipart/form-data"],
+        manual_parameters=[
+            openapi.Parameter(
+                name="block_name",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated block name (optional)"
+            ),
+            openapi.Parameter(
+                name="block_image",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="New or updated block image"
+            ),
+            openapi.Parameter(
+                name="block_kkal",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated total kkal"
+            ),
+            openapi.Parameter(
+                name="block_water_amount",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated water amount in ml"
+            ),
+            openapi.Parameter(
+                name="description",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated block description"
+            ),
+            openapi.Parameter(
+                name="video_url",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated video URL"
+            ),
+            openapi.Parameter(
+                name="block_time",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_INTEGER,
+                description="Updated total time in minutes"
+            ),
+            openapi.Parameter(
+                name="calories_burned",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description="Updated calories burned"
+            ),
+            openapi.Parameter(
+                name="exercises",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_STRING,
+                description=(
+                    "JSON array of exercises to create/update. For file fields, do exercises[0].image, etc."
+                )
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Successfully partially updated ExerciseBlock",
+                schema=NestedExerciseBlockSerializer()
+            )
+        }
+    )
+    @action(detail=True, methods=['patch'], url_path='partial-update')  # if you want a custom route, or you can rename
+    def partial_update_block(self, request, pk=None):
+        # If you want a custom route, else you can just override partial_update normally
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        return super().partial_update(request, pk, *args, **kwargs)
+
+    # Alternatively, if you want the standard PATCH /exerciseblocks/<id>:
+    # Just rename partial_update_block -> partial_update (and remove the @action decorator).
+    # The code is the same, but it replaces the DRF default partial_update method.
+
+    # --------------------------
+    # DESTROY
+    # --------------------------
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
     # --------------------------
     # UPLOAD BLOCK IMAGE ALONE
     # --------------------------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or replace only the block_image via a separate endpoint.",
+        operation_description="Upload or replace only the block_image via a separate endpoint (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
@@ -492,6 +593,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=['patch'], url_path='upload-image', parser_classes=[MultiPartParser, FormParser])
     def upload_image(self, request, pk=None):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+
         block = self.get_object()
         file_obj = request.FILES.get('block_image')
         if not file_obj:
@@ -501,7 +605,6 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         block.save()
         serializer = self.get_serializer(block)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
