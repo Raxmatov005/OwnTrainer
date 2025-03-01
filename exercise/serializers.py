@@ -47,7 +47,7 @@ class ProgramSerializer(serializers.ModelSerializer):
 
 class NestedExerciseSerializer(serializers.ModelSerializer):
     """
-    Includes the `image` field, so each exercise can have its own image.
+    Includes `image` so each exercise can have its own image.
     """
     image = serializers.ImageField(required=False, allow_null=True)
 
@@ -66,7 +66,7 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
 
 class NestedExerciseBlockSerializer(serializers.ModelSerializer):
     """
-    Allows a top-level `block_image` plus a nested array of `exercises`,
+    Includes `block_image` at the top level, plus a nested array of `exercises`,
     each of which can have an `image`.
     """
     block_image = serializers.ImageField(required=False, allow_null=True)
@@ -128,7 +128,6 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
                     instance.exercises.add(new_exercise)
 
         return instance
-
 
 class SessionPKSerializer(serializers.ModelSerializer):
     # Instead of nested data, use primary key references.

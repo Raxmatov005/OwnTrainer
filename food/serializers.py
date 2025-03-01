@@ -13,6 +13,8 @@ def translate_field(instance, field_name, language):
 
 
 
+
+
 class MealStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealSteps
@@ -25,7 +27,6 @@ class MealStepSerializer(serializers.ModelSerializer):
         data['title'] = translate_field(instance, 'title', language)
         data['text'] = translate_field(instance, 'text', language)
         return data
-
 
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
@@ -51,15 +52,12 @@ class MealNestedSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get('request', None)
         language = self.context.get("language", "en")
-        # Translate meal_type or fallback to get_meal_type_display
-        data['meal_type'] = (
-            getattr(instance, f"meal_type_{language}", None)
-            or instance.get_meal_type_display()
-        )
+
+        # meal_type translation or fallback
+        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
 
-        # Build absolute URL for the food_photo if present
         if instance.food_photo:
             try:
                 if request is not None:
@@ -97,7 +95,6 @@ class MealNestedSerializer(serializers.ModelSerializer):
                     step_instance.save()
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
-
         return instance
 
 class MealCompletionSerializer(serializers.ModelSerializer):

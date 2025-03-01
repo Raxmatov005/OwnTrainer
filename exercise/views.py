@@ -277,11 +277,10 @@ class SessionViewSet(viewsets.ModelViewSet):
 
 
 
-
-
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
+    # Only admins can create/update, normal users can read if subscription active
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -290,6 +289,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         if user.is_superuser or user.is_staff:
             return ExerciseBlock.objects.all()
 
+        # Non-admin: filter by subscription logic
         from users_app.models import UserProgram, SessionCompletion
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
@@ -306,15 +306,17 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             "request": self.request
         }
 
+    # --------------------------
+    # CREATE
+    # --------------------------
     @swagger_auto_schema(
+        request_body=None,  # important: we do not want drf-yasg to treat the default serializer as request_body
         operation_description=(
-            "Create a new ExerciseBlock. "
-            "Send 'block_image' as a file if desired. "
-            "For nested exercises (including each exercise's `image`), "
-            "pass them as JSON in the `exercises` field. "
-            "Example for exercises JSON: "
-            "[{'name': 'Push Ups', 'description': 'desc', 'image': <file>}, ...]. "
-            "But in actual form-data you can do exercises[0].name, exercises[0].image, etc."
+            "Create a new ExerciseBlock with optional 'block_image' and nested exercises. "
+            "Each nested exercise can have an 'image' if needed. "
+            "Send everything as multipart/form-data. For the 'exercises' field, pass a JSON string. "
+            "Example: exercises=[{\"name\":\"Push Ups\",\"description\":\"desc\"}, ...]. "
+            "Then for images: exercises[0].image=@file in your form."
         ),
         consumes=["multipart/form-data"],
         manual_parameters=[
@@ -372,31 +374,30 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_STRING,
                 description=(
-                    "JSON array of exercises. Each item can contain 'name', 'exercise_time', 'description', "
-                    "and 'image' if needed. "
-                    "BUT for file fields, you'll typically do exercises[0].image in the actual form-data."
+                    "JSON array of exercises. Each item may have 'name', 'exercise_time', 'description', and 'image'. "
+                    "But you'll attach the image file as exercises[0].image in form-data, etc."
                 )
             ),
         ],
         responses={
             201: openapi.Response(
-                description="Successfully created ExerciseBlock",
+                description="Successfully created an ExerciseBlock",
                 schema=NestedExerciseBlockSerializer()
             )
         }
     )
     def create(self, request, *args, **kwargs):
-        """
-        We override create only to doc how to pass data. The code itself is still the default create
-        using NestedExerciseBlockSerializer.
-        """
         return super().create(request, *args, **kwargs)
 
+    # --------------------------
+    # UPDATE
+    # --------------------------
     @swagger_auto_schema(
+        request_body=None,  # remove conflicts with manual form parameters
         operation_description=(
             "Update an existing ExerciseBlock. "
-            "You can replace the 'block_image'. For nested exercises, also pass them as JSON in `exercises`. "
-            "If an item has an 'id', that exercise is updated; if no 'id', a new exercise is created."
+            "You can replace 'block_image'. For exercises, pass a JSON array in `exercises`. "
+            "If an exercise has an 'id', it's updated; otherwise it's created."
         ),
         consumes=["multipart/form-data"],
         manual_parameters=[
@@ -467,6 +468,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
+    # --------------------------
+    # UPLOAD BLOCK IMAGE ALONE
+    # --------------------------
     @swagger_auto_schema(
         method='patch',
         operation_description="Upload or replace only the block_image via a separate endpoint.",
@@ -476,7 +480,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 name="block_image",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload block image"
+                description="Upload a new block image"
             )
         ],
         responses={
@@ -497,7 +501,6 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         block.save()
         serializer = self.get_serializer(block)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 
 
 class CompleteBlockView(APIView):

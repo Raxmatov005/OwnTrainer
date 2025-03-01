@@ -28,11 +28,10 @@ from food.serializers import (
 class MealViewSet(viewsets.ModelViewSet):
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # or [permissions.IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        # For Swagger doc generation
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
 
@@ -68,17 +67,17 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="List all meals for the authenticated user",
+        operation_description="List all meals (only for staff or valid subscription user).",
         responses={200: MealNestedSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
+        qs = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(qs, many=True)
         return Response({"meals": serializer.data}, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Retrieve a specific meal by ID",
+        operation_description="Retrieve a meal by ID (staff or subscription).",
         responses={200: MealNestedSerializer()}
     )
     def retrieve(self, request, pk=None):
@@ -88,7 +87,7 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Create a new meal with optional food_photo and steps",
+        operation_description="Create a new meal with optional 'food_photo' and steps.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -101,7 +100,7 @@ class MealViewSet(viewsets.ModelViewSet):
                 'water_content': openapi.Schema(type=openapi.TYPE_STRING),
                 'food_photo': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Optional photo of the meal"
+                    description="Optional meal photo"
                 ),
                 'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
                 'description': openapi.Schema(type=openapi.TYPE_STRING),
@@ -122,21 +121,17 @@ class MealViewSet(viewsets.ModelViewSet):
         ),
         consumes=['multipart/form-data'],
         responses={
-            201: openapi.Response(description="Meal created", schema=MealNestedSerializer()),
-            400: openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'error': openapi.Schema(type=openapi.TYPE_STRING)
-                }
-            )
+            201: openapi.Response(description="Meal created", schema=MealNestedSerializer())
         }
     )
     def create(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Update a Meal. You can upload a new 'food_photo'. Steps will be updated/created as provided.",
+        operation_description="Update a Meal. You can upload a new 'food_photo'. Steps are updated/created as provided.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -149,7 +144,7 @@ class MealViewSet(viewsets.ModelViewSet):
                 'water_content': openapi.Schema(type=openapi.TYPE_STRING),
                 'food_photo': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Replace or upload new meal photo"
+                    description="Replace or upload a new meal photo"
                 ),
                 'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
                 'description': openapi.Schema(type=openapi.TYPE_STRING),
@@ -169,39 +164,48 @@ class MealViewSet(viewsets.ModelViewSet):
             }
         ),
         consumes=['multipart/form-data'],
-        responses={200: openapi.Response(description="Meal updated", schema=MealNestedSerializer())}
+        responses={
+            200: openapi.Response(description="Meal updated", schema=MealNestedSerializer())
+        }
     )
     def update(self, request, pk=None, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, pk, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Partially update a Meal by ID",
+        operation_description="Partially update a Meal by ID (admins only).",
         request_body=MealNestedSerializer,
         responses={200: MealNestedSerializer()}
     )
     def partial_update(self, request, pk=None, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, pk, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description="Delete a Meal by ID",
+        operation_description="Delete a Meal by ID (admins only).",
         responses={204: "No Content"}
     )
     def destroy(self, request, pk=None, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, pk, *args, **kwargs)
 
+    # Optionally, a separate custom endpoint to upload photo alone
     @swagger_auto_schema(
         method='patch',
         tags=['Meals'],
-        operation_description="Upload or update the Meal's 'food_photo' separately.",
+        operation_description="Upload or update the Meal's 'food_photo' separately (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name="food_photo",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload the new meal photo"
+                description="New meal photo"
             )
         ],
         responses={
@@ -213,15 +217,19 @@ class MealViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=['patch'], url_path='upload-photo', parser_classes=[MultiPartParser, FormParser])
     def upload_photo(self, request, pk=None):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+
         meal = self.get_object()
         file_obj = request.FILES.get('food_photo', None)
         if not file_obj:
-            return Response({"detail": "No photo uploaded."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         meal.food_photo = file_obj
         meal.save()
         serializer = self.get_serializer(meal)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """
