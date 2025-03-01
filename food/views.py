@@ -253,6 +253,50 @@ class MealViewSet(viewsets.ModelViewSet):
         meal.delete()
         return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
+
+
+class MealViewSet(viewsets.ModelViewSet):
+    queryset = Meal.objects.all()
+    serializer_class = MealNestedSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    # Normal create/update remain as JSON-based endpoints.
+
+    # Custom action for uploading food_photo separately
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Upload or update the food_photo separately for a Meal.",
+        consumes=['multipart/form-data'],
+        manual_parameters=[
+            openapi.Parameter(
+                name="food_photo",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Upload the food photo"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Successfully updated meal photo",
+                schema=MealNestedSerializer()
+            )
+        }
+    )
+    @action(detail=True, methods=['patch'], url_path='upload-photo', parser_classes=[MultiPartParser, FormParser])
+    def upload_photo(self, request, pk=None):
+        meal = self.get_object()
+        file_obj = request.FILES.get('food_photo', None)
+        if not file_obj:
+            return Response({"detail": "No photo uploaded."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        meal.food_photo = file_obj
+        meal.save()
+
+        serializer = self.get_serializer(meal)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 class MealStepViewSet(viewsets.ModelViewSet):
     """
     (Optional) Manage MealSteps individually.

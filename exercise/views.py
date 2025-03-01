@@ -483,6 +483,53 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
+
+class ExerciseBlockViewSet(viewsets.ModelViewSet):
+    queryset = ExerciseBlock.objects.all()
+    serializer_class = NestedExerciseBlockSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    # 1) Regular create with JSON
+    # Your create method can remain as-is, no changes required if you want purely JSON.
+
+    # 2) A custom PATCH route just for uploading/updating the block_image
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Upload or update the block_image separately.",
+        consumes=['multipart/form-data'],
+        manual_parameters=[
+            openapi.Parameter(
+                name="block_image",
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Upload the image file for the ExerciseBlock"
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Successfully updated image",
+                schema=NestedExerciseBlockSerializer()
+            )
+        }
+    )
+    @action(detail=True, methods=['patch'], url_path='upload-image', parser_classes=[MultiPartParser, FormParser])
+    def upload_image(self, request, pk=None):
+        block = self.get_object()
+        file_obj = request.FILES.get('block_image', None)
+        if not file_obj:
+            return Response({"detail": "No file uploaded."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Update the block_image field
+        block.block_image = file_obj
+        block.save()
+
+        # Return updated data
+        serializer = self.get_serializer(block)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
 
