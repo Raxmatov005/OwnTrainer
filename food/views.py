@@ -26,21 +26,14 @@ from food.serializers import (
 
 
 class MealViewSet(viewsets.ModelViewSet):
-    """
-    Handles CRUD for Meal along with nested MealSteps.
-    Nested update logic will:
-      - update existing steps (if an 'id' is provided),
-      - create new ones for any item without an 'id',
-      - leave unmentioned steps intact.
-    """
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
+        # For Swagger doc generation
         if getattr(self, 'swagger_fake_view', False):
-            # drf-yasg view
             return Meal.objects.none()
 
         user = self.request.user
@@ -48,11 +41,9 @@ class MealViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(_("Authentication is required to view meals."))
 
-        # If user is staff, show all meals
         if user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
 
-        # Otherwise, filter by user's active program & subscription
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program:
             return Meal.objects.none()
@@ -65,7 +56,6 @@ class MealViewSet(viewsets.ModelViewSet):
         if not has_active_subscription:
             return Meal.objects.none()
 
-        # Show meals for sessions in the user's program
         return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
     def get_serializer_context(self):
@@ -78,7 +68,7 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("List all meals for the authenticated user"),
+        operation_description="List all meals for the authenticated user",
         responses={200: MealNestedSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
@@ -88,7 +78,7 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Retrieve a specific meal by ID"),
+        operation_description="Retrieve a specific meal by ID",
         responses={200: MealNestedSerializer()}
     )
     def retrieve(self, request, pk=None):
@@ -98,55 +88,34 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Create a new meal with optional steps. You can upload a 'food_photo' in the same request."),
+        operation_description="Create a new meal with optional food_photo and steps",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 'meal_type': openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    enum=[choice[0] for choice in Meal.MEAL_TYPES],
-                    description="Type of the meal (e.g., 'breakfast', 'lunch', 'snack', 'dinner')"
+                    enum=[choice[0] for choice in Meal.MEAL_TYPES]
                 ),
-                'food_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the food"
-                ),
-                'calories': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Caloric content (decimal as string)"
-                ),
-                'water_content': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water content in ml (decimal as string)"
-                ),
+                'food_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'calories': openapi.Schema(type=openapi.TYPE_STRING),
+                'water_content': openapi.Schema(type=openapi.TYPE_STRING),
                 'food_photo': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Optional photo of the food"
+                    description="Optional photo of the meal"
                 ),
-                'preparation_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Preparation time in minutes"
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the meal"
-                ),
-                'video_url': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="Optional URL to a video"
-                ),
+                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'description': openapi.Schema(type=openapi.TYPE_STRING),
+                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI),
                 'steps': openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Schema(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING, description="Time for this step")
+                            'title': openapi.Schema(type=openapi.TYPE_STRING),
+                            'text': openapi.Schema(type=openapi.TYPE_STRING),
+                            'step_time': openapi.Schema(type=openapi.TYPE_STRING),
                         }
-                    ),
-                    description="List of preparation steps"
+                    )
                 ),
             },
             required=['meal_type', 'food_name', 'calories', 'water_content', 'preparation_time']
@@ -157,18 +126,17 @@ class MealViewSet(viewsets.ModelViewSet):
             400: openapi.Schema(
                 type=openapi.TYPE_OBJECT,
                 properties={
-                    'error': openapi.Schema(type=openapi.TYPE_STRING, description='Error message')
+                    'error': openapi.Schema(type=openapi.TYPE_STRING)
                 }
             )
         }
     )
     def create(self, request, *args, **kwargs):
-        """Create a Meal (and optional Steps) with a possible file upload for food_photo."""
         return super().create(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Update a Meal by ID. You can upload a new 'food_photo' in the same request."),
+        operation_description="Update a Meal. You can upload a new 'food_photo'. Steps will be updated/created as provided.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -176,98 +144,64 @@ class MealViewSet(viewsets.ModelViewSet):
                     type=openapi.TYPE_STRING,
                     enum=[choice[0] for choice in Meal.MEAL_TYPES]
                 ),
-                'food_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the food"
-                ),
-                'calories': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Caloric content (decimal as string)"
-                ),
-                'water_content': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water content in ml (decimal as string)"
-                ),
+                'food_name': openapi.Schema(type=openapi.TYPE_STRING),
+                'calories': openapi.Schema(type=openapi.TYPE_STRING),
+                'water_content': openapi.Schema(type=openapi.TYPE_STRING),
                 'food_photo': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Upload a new photo of the food (optional)"
+                    description="Replace or upload new meal photo"
                 ),
-                'preparation_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Preparation time in minutes"
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the meal"
-                ),
-                'video_url': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="Optional video URL"
-                ),
+                'preparation_time': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'description': openapi.Schema(type=openapi.TYPE_STRING),
+                'video_url': openapi.Schema(type=openapi.TYPE_STRING, format=openapi.FORMAT_URI),
                 'steps': openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Schema(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            'id': openapi.Schema(
-                                type=openapi.TYPE_INTEGER,
-                                description="If provided, update this existing step. Otherwise, create a new step."
-                            ),
-                            'title': openapi.Schema(type=openapi.TYPE_STRING, description="Step title"),
-                            'text': openapi.Schema(type=openapi.TYPE_STRING, description="Step description"),
-                            'step_time': openapi.Schema(type=openapi.TYPE_STRING, description="Time for this step")
+                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'title': openapi.Schema(type=openapi.TYPE_STRING),
+                            'text': openapi.Schema(type=openapi.TYPE_STRING),
+                            'step_time': openapi.Schema(type=openapi.TYPE_STRING),
                         }
                     )
                 ),
             }
         ),
         consumes=['multipart/form-data'],
-        responses={
-            200: openapi.Response(description="Meal updated", schema=MealNestedSerializer())
-        }
+        responses={200: openapi.Response(description="Meal updated", schema=MealNestedSerializer())}
     )
     def update(self, request, pk=None, *args, **kwargs):
-        """Full update of a Meal. Replace or add steps, optionally upload a new food_photo."""
         return super().update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Partially update a Meal by ID (JSON or form-data)."),
+        operation_description="Partially update a Meal by ID",
         request_body=MealNestedSerializer,
         responses={200: MealNestedSerializer()}
     )
     def partial_update(self, request, pk=None, *args, **kwargs):
-        """
-        Partially update a Meal.
-        NOTE: If you want to upload a file in partial_update, set Content-Type: multipart/form-data
-        and pass only the fields you want to update.
-        """
         return super().partial_update(request, pk, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Meals'],
-        operation_description=_("Delete a Meal by ID"),
+        operation_description="Delete a Meal by ID",
         responses={204: "No Content"}
     )
     def destroy(self, request, pk=None, *args, **kwargs):
-        """Delete a Meal."""
         return super().destroy(request, pk, *args, **kwargs)
 
-    # -----------------------------------------------------------
-    # Custom action to upload or update the meal's food_photo only
-    # -----------------------------------------------------------
     @swagger_auto_schema(
         method='patch',
         tags=['Meals'],
-        operation_description=_("Upload or update the Meal's 'food_photo' separately."),
+        operation_description="Upload or update the Meal's 'food_photo' separately.",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name="food_photo",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload the food photo"
+                description="Upload the new meal photo"
             )
         ],
         responses={
@@ -279,9 +213,6 @@ class MealViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=['patch'], url_path='upload-photo', parser_classes=[MultiPartParser, FormParser])
     def upload_photo(self, request, pk=None):
-        """
-        Separate endpoint for uploading/replacing the Meal's food_photo.
-        """
         meal = self.get_object()
         file_obj = request.FILES.get('food_photo', None)
         if not file_obj:
@@ -289,7 +220,6 @@ class MealViewSet(viewsets.ModelViewSet):
 
         meal.food_photo = file_obj
         meal.save()
-
         serializer = self.get_serializer(meal)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

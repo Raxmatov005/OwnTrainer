@@ -12,6 +12,7 @@ def translate_field(instance, field_name, language):
     return val if val else getattr(instance, field_name, '')
 
 
+
 class MealStepSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealSteps
@@ -24,6 +25,7 @@ class MealStepSerializer(serializers.ModelSerializer):
         data['title'] = translate_field(instance, 'title', language)
         data['text'] = translate_field(instance, 'text', language)
         return data
+
 
 class MealNestedSerializer(serializers.ModelSerializer):
     steps = MealStepSerializer(many=True, required=False)
@@ -49,9 +51,15 @@ class MealNestedSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get('request', None)
         language = self.context.get("language", "en")
-        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
+        # Translate meal_type or fallback to get_meal_type_display
+        data['meal_type'] = (
+            getattr(instance, f"meal_type_{language}", None)
+            or instance.get_meal_type_display()
+        )
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
+
+        # Build absolute URL for the food_photo if present
         if instance.food_photo:
             try:
                 if request is not None:
@@ -62,11 +70,11 @@ class MealNestedSerializer(serializers.ModelSerializer):
                 data['food_photo'] = None
         else:
             data['food_photo'] = None
+
         return data
 
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
-        # food_photo will already be in validated_data if passed
         meal = Meal.objects.create(**validated_data)
         for step_dict in steps_data:
             MealSteps.objects.create(meal=meal, **step_dict)
@@ -77,17 +85,19 @@ class MealNestedSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
         if steps_data is not None:
-            existing_steps = {step.id: step for step in instance.steps.all()}
+            existing_steps = {s.id: s for s in instance.steps.all()}
             for step_dict in steps_data:
-                step_id = step_dict.get('id', None)
+                step_id = step_dict.get('id')
                 if step_id and step_id in existing_steps:
                     step_instance = existing_steps[step_id]
-                    for attr, value in step_dict.items():
-                        setattr(step_instance, attr, value)
+                    for field, val in step_dict.items():
+                        setattr(step_instance, field, val)
                     step_instance.save()
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
+
         return instance
 
 class MealCompletionSerializer(serializers.ModelSerializer):

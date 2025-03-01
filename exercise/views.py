@@ -276,7 +276,6 @@ class SessionViewSet(viewsets.ModelViewSet):
         return Response({"message": _("Today's session has been reset successfully.")}, status=200)
 
 
-
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
@@ -284,23 +283,16 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        """
-        - Admins: Get all ExerciseBlocks
-        - Other Users: Get only the blocks assigned to their active sessions
-        """
         user = self.request.user
-
-        # If admin/staff, return all
         if user.is_superuser or user.is_staff:
             return ExerciseBlock.objects.all()
 
-        # Check active program & subscription
+        # Non-admin: only blocks assigned to the user's active program sessions
         from users_app.models import UserProgram, SessionCompletion
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return ExerciseBlock.objects.none()
 
-        # Get session IDs assigned to the user
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
@@ -313,159 +305,98 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         }
 
     @swagger_auto_schema(
-        operation_description="Create a new ExerciseBlock with (optional) block_image and nested exercises. "
-                              "Sequence numbers for nested exercises auto-assigned by order.",
+        operation_description=(
+            "Create a new ExerciseBlock with an optional 'block_image' and nested exercises. "
+            "Exercises can also have an 'image' field in the actual request, but it's omitted "
+            "from the schema to avoid Swagger issues."
+        ),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'block_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Name of the exercise block."
-                ),
+                'block_name': openapi.Schema(type=openapi.TYPE_STRING),
                 'block_image': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Optional image file for the exercise block."
+                    description="Optional block image"
                 ),
-                'block_kkal': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Approx total kkal (decimal)."
-                ),
-                'block_water_amount': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Water amount in ml (decimal)."
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Description of the exercise block."
-                ),
+                'block_kkal': openapi.Schema(type=openapi.TYPE_STRING),
+                'block_water_amount': openapi.Schema(type=openapi.TYPE_STRING),
+                'description': openapi.Schema(type=openapi.TYPE_STRING),
                 'video_url': openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="URL for an associated video (optional)."
+                    format=openapi.FORMAT_URI
                 ),
-                'block_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Estimated total time in minutes."
-                ),
-                'calories_burned': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Total calories burned in this block (decimal)."
-                ),
+                'block_time': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'calories_burned': openapi.Schema(type=openapi.TYPE_STRING),
                 'exercises': openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Items(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            # We remove 'image' here to avoid Swagger errors.
                             'id': openapi.Schema(
                                 type=openapi.TYPE_INTEGER,
-                                description="(Optional) ID of an existing exercise to update."
+                                description="If given, update that existing exercise (not typical on create)."
                             ),
-                            'name': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Name of the exercise."
-                            ),
-                            'exercise_time': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Duration in HH:MM:SS format, e.g. '00:05:00'."
-                            ),
-                            'description': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Description of the exercise."
-                            ),
-                            # 'image' is intentionally omitted from Swagger schema
+                            'name': openapi.Schema(type=openapi.TYPE_STRING),
+                            'exercise_time': openapi.Schema(type=openapi.TYPE_STRING),
+                            'description': openapi.Schema(type=openapi.TYPE_STRING),
+                            # 'image' omitted from schema (but code still accepts it).
                         }
-                    ),
-                    description="Optional list of exercises to create/update with this block."
+                    )
                 ),
             },
             required=['block_name']
         ),
         responses={
             201: openapi.Response(
-                description="Successfully created an ExerciseBlock with nested exercises.",
+                description="ExerciseBlock created",
                 schema=NestedExerciseBlockSerializer()
             )
         },
-        consumes=['multipart/form-data']  # to allow block_image upload in the same request
+        consumes=['multipart/form-data']
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Update an existing ExerciseBlock. "
-                              "If you provide 'exercises' with IDs, those exercises get updated. "
-                              "Any new item without an ID creates a new exercise. "
-                              "Unmentioned exercises remain intact. "
-                              "Also optionally update block_image in the same request.",
+        operation_description=(
+            "Update an existing ExerciseBlock. Optionally upload 'block_image'. If 'exercises' is given, "
+            "existing IDs get updated, new items get created, unmentioned remain attached."
+        ),
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'block_name': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Updated name of the exercise block (optional)."
-                ),
+                'block_name': openapi.Schema(type=openapi.TYPE_STRING),
                 'block_image': openapi.Schema(
                     type=openapi.TYPE_FILE,
-                    description="Optional new image file for the exercise block."
+                    description="New or replacement block image"
                 ),
-                'block_kkal': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Updated total kkal (optional)."
-                ),
-                'block_water_amount': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Updated water amount in ml (optional)."
-                ),
-                'description': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Updated description of the exercise block."
-                ),
+                'block_kkal': openapi.Schema(type=openapi.TYPE_STRING),
+                'block_water_amount': openapi.Schema(type=openapi.TYPE_STRING),
+                'description': openapi.Schema(type=openapi.TYPE_STRING),
                 'video_url': openapi.Schema(
                     type=openapi.TYPE_STRING,
-                    format=openapi.FORMAT_URI,
-                    description="Updated video URL (optional)."
+                    format=openapi.FORMAT_URI
                 ),
-                'block_time': openapi.Schema(
-                    type=openapi.TYPE_INTEGER,
-                    description="Updated total time in minutes (optional)."
-                ),
-                'calories_burned': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Updated calories burned (optional)."
-                ),
+                'block_time': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'calories_burned': openapi.Schema(type=openapi.TYPE_STRING),
                 'exercises': openapi.Schema(
                     type=openapi.TYPE_ARRAY,
                     items=openapi.Items(
                         type=openapi.TYPE_OBJECT,
                         properties={
-                            'id': openapi.Schema(
-                                type=openapi.TYPE_INTEGER,
-                                description="ID of an existing exercise to update. "
-                                            "Omit to create a new exercise."
-                            ),
-                            'name': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Updated name of the exercise."
-                            ),
-                            'exercise_time': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Updated duration in HH:MM:SS format."
-                            ),
-                            'description': openapi.Schema(
-                                type=openapi.TYPE_STRING,
-                                description="Updated description of the exercise."
-                            ),
-                            # 'image' intentionally omitted
+                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'name': openapi.Schema(type=openapi.TYPE_STRING),
+                            'exercise_time': openapi.Schema(type=openapi.TYPE_STRING),
+                            'description': openapi.Schema(type=openapi.TYPE_STRING),
+                            # 'image' omitted from schema (but code still accepts it).
                         }
-                    ),
-                    description="List of exercises to create or update. Unmentioned remain untouched."
+                    )
                 ),
             }
         ),
         responses={
             200: openapi.Response(
-                description="Successfully updated the ExerciseBlock and any mentioned exercises.",
+                description="ExerciseBlock updated",
                 schema=NestedExerciseBlockSerializer()
             )
         },
@@ -476,40 +407,34 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or update the block_image separately.",
+        operation_description="Upload or replace only the 'block_image' field.",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name="block_image",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload/replace the image file for the ExerciseBlock"
+                description="Upload block image"
             )
         ],
         responses={
             200: openapi.Response(
-                description="Successfully updated image",
+                description="Block image updated",
                 schema=NestedExerciseBlockSerializer()
             )
-        },
+        }
     )
     @action(detail=True, methods=['patch'], url_path='upload-image', parser_classes=[MultiPartParser, FormParser])
     def upload_image(self, request, pk=None):
-        """
-        Separate endpoint just for uploading/replacing the ExerciseBlock's block_image.
-        """
         block = self.get_object()
-        file_obj = request.FILES.get('block_image', None)
+        file_obj = request.FILES.get('block_image')
         if not file_obj:
-            return Response({"detail": "No file uploaded."},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         block.block_image = file_obj
         block.save()
-
         serializer = self.get_serializer(block)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
 

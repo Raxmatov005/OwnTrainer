@@ -44,10 +44,18 @@ class ProgramSerializer(serializers.ModelSerializer):
         data['program_goal'] = translate_field(instance, 'program_goal', language)
         return data
 
+
 # ------------------------------
 # Nested Exercise Serializer
 # ------------------------------
 class NestedExerciseSerializer(serializers.ModelSerializer):
+    """
+    Includes the 'image' field for actual code usage,
+    but we won't reference it in the OpenAPI array schema
+    to prevent drf-yasg crash.
+    """
+    image = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = Exercise
         fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image']
@@ -60,13 +68,18 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
         data['description'] = translate_field(instance, 'description', language)
         return data
 
+
 # ------------------------------
-# Nested ExerciseBlock Serializer (Unified)
+# Nested ExerciseBlock Serializer
 # ------------------------------
 class NestedExerciseBlockSerializer(serializers.ModelSerializer):
-    # Nested exercises that can be created or updated alongside the block.
+    """
+    For the block, we do a top-level 'block_image' field,
+    and also support nested 'exercises' (which can include 'image' in code).
+    """
     exercises = NestedExerciseSerializer(many=True, required=False)
-    block_image = Base64ImageField(required=False)
+    block_image = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = ExerciseBlock
         fields = [
@@ -91,58 +104,39 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        # Pop out the nested exercises data (if any)
         exercises_data = validated_data.pop('exercises', [])
-        # Create the exercise block (with or without an image)
         block = ExerciseBlock.objects.create(**validated_data)
-        # Create each exercise and assign a sequence number automatically based on its order.
+        # Create nested exercises
         for idx, ex_data in enumerate(exercises_data, start=1):
-            ex_data['sequence_number'] = idx  # Automatic sequencing
+            ex_data['sequence_number'] = idx
             exercise = Exercise.objects.create(**ex_data)
-            # Connect the exercise to the block via the many-to-many relationship.
             block.exercises.add(exercise)
         return block
 
     def update(self, instance, validated_data):
-        """
-        Updates only the fields that appear in validated_data,
-        and updates/creates nested exercises without removing
-        any that are not mentioned in the payload.
-        """
         exercises_data = validated_data.pop('exercises', None)
-
-        # Update the ExerciseBlock fields (block_name, block_image, etc.)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
         if exercises_data is not None:
-            # Dictionary of existing exercises on this block, keyed by ID
             existing_exercises = {ex.id: ex for ex in instance.exercises.all()}
-
             for idx, ex_data in enumerate(exercises_data, start=1):
                 ex_id = ex_data.get('id')
-
-                # If ex_id is present and belongs to this block, update that exercise
                 if ex_id and ex_id in existing_exercises:
+                    # update existing exercise
                     exercise_instance = existing_exercises[ex_id]
                     for field, val in ex_data.items():
-                        # Skip 'id' because it's read-only
                         if field == 'id':
                             continue
                         setattr(exercise_instance, field, val)
-                    # Optionally update sequence_number to match incoming order
                     exercise_instance.sequence_number = idx
                     exercise_instance.save()
-
-                # If no ID is provided, create a new exercise
                 else:
-                    ex_data['sequence_number'] = idx  # new exercise gets enumerated seq
+                    # create new exercise
+                    ex_data['sequence_number'] = idx
                     new_exercise = Exercise.objects.create(**ex_data)
                     instance.exercises.add(new_exercise)
-
-            # IMPORTANT: We do NOT remove leftover exercises that weren't in the payload.
-            # Any existing exercises that were not mentioned remain attached to the block.
 
         return instance
 
