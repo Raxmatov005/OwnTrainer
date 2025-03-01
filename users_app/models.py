@@ -457,6 +457,128 @@ def translate_text(text, target_language):
     except Exception:
         return text
 
+class Meal(models.Model):
+    """
+    Meal model now contains all fields formerly in Preparation (except water_usage,
+    which is removed because water_content already exists).
+    """
+    MEAL_TYPES = (
+        ('breakfast', 'Breakfast'),
+        ('lunch', 'Lunch'),
+        ('snack', 'Snack'),
+        ('dinner', 'Dinner'),
+    )
+
+    meal_type = models.CharField(max_length=20, choices=MEAL_TYPES)
+    food_name = models.CharField(max_length=255)
+    food_name_uz = models.CharField(max_length=255, blank=True, null=True)
+    food_name_ru = models.CharField(max_length=255, blank=True, null=True)
+    food_name_en = models.CharField(max_length=255, blank=True, null=True)
+
+    calories = models.DecimalField(max_digits=5, decimal_places=2, help_text="Calories for this meal")
+    water_content = models.DecimalField(max_digits=5, decimal_places=2, help_text="Water content in ml")
+    food_photo = models.ImageField(upload_to='meal_photos/', blank=True, null=True)
+    preparation_time = models.IntegerField(help_text="Preparation time in minutes")
+
+    meal_type_uz = models.CharField(max_length=20, blank=True, null=True)
+    meal_type_ru = models.CharField(max_length=20, blank=True, null=True)
+    meal_type_en = models.CharField(max_length=20, blank=True, null=True)
+
+    # Extra fields formerly in Preparation
+    description = models.TextField(blank=True, null=True)
+    description_uz = models.TextField(blank=True, null=True)
+    description_ru = models.TextField(blank=True, null=True)
+    description_en = models.TextField(blank=True, null=True)
+    video_url = models.URLField(max_length=500, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if self.description and not self.description_uz:
+            self.description_uz = translate_text(self.description, 'uz')
+        if self.description and not self.description_ru:
+            self.description_ru = translate_text(self.description, 'ru')
+        if self.description and not self.description_en:
+            self.description_en = translate_text(self.description, 'en')
+        super(Meal, self).save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.meal_type.capitalize()}: {self.food_name}"
+
+
+
+class MealCompletion(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="meal_completions")
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="meal_completions")
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE, related_name="completions")
+    is_completed = models.BooleanField(default=False)
+    completion_date = models.DateField(null=True, blank=True)
+    meal_date = models.DateField(null=True, blank=True)  # New field for planned date
+    missed = models.BooleanField(default=False) # Track if the meal was missed
+    reminder_sent = models.BooleanField(default=False) # Track if a reminder was sent for this meal
+    meal_time = models.TimeField(null=True, blank=True) # Time set by user for meal completion
+
+
+
+    class Meta:
+        unique_together = ('user', 'session', 'meal')  # Ensures unique tracking per user-session-meal combination
+
+    def save(self, *args, **kwargs):
+        if self.is_completed and not self.completion_date:
+            self.completion_date = timezone.now().date()
+        super(MealCompletion, self).save(*args, **kwargs)
+
+    def __str__(self):
+        status = "Completed" if self.is_completed else "Pending"
+        return f"{self.user.email_or_phone} - {self.meal.food_name} ({status})"
+
+class MealSteps(models.Model):
+    """
+    Each Meal can have multiple steps.
+    (Replaces the old PreparationSteps model.)
+    """
+    meal = models.ForeignKey(
+        Meal,
+        on_delete=models.CASCADE,
+        related_name="steps",
+        verbose_name=_("Meal")
+    )
+    title = models.CharField(max_length=255, verbose_name=_("Step Title"))
+    title_uz = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (Uzbek)"))
+    title_ru = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (Russian)"))
+    title_en = models.CharField(max_length=255, blank=True, null=True, verbose_name=_("Step Title (English)"))
+    text = models.TextField(blank=True, null=True, verbose_name=_("Step Description"))
+    text_uz = models.TextField(blank=True, null=True, verbose_name=_("Step Description (Uzbek)"))
+    text_ru = models.TextField(blank=True, null=True, verbose_name=_("Step Description (Russian)"))
+    text_en = models.TextField(blank=True, null=True, verbose_name=_("Step Description (English)"))
+    step_number = models.PositiveIntegerField(default=1, verbose_name=_("Step Number"))
+    step_time = models.CharField(max_length=10, blank=True, null=True, verbose_name=_("Step Time (minutes)"))
+
+    class Meta:
+        verbose_name = _("Meal Step")
+        verbose_name_plural = _("Meal Steps")
+        ordering = ["step_number"]
+        unique_together = ('meal', 'step_number')
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            last_step = MealSteps.objects.filter(meal=self.meal).order_by('step_number').last()
+            self.step_number = (last_step.step_number + 1) if last_step else 1
+        if self.title and not self.title_uz:
+            self.title_uz = translate_text(self.title, 'uz')
+        if self.title and not self.title_ru:
+            self.title_ru = translate_text(self.title, 'ru')
+        if self.title and not self.title_en:
+            self.title_en = translate_text(self.title, 'en')
+        if self.text and not self.text_uz:
+            self.text_uz = translate_text(self.text, 'uz')
+        if self.text and not self.text_ru:
+            self.text_ru = translate_text(self.text, 'ru')
+        if self.text and not self.text_en:
+            self.text_en = translate_text(self.text, 'en')
+        super(MealSteps, self).save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Step {self.step_number} for Meal {self.meal.food_name}"
+
 
 
 class Notification(models.Model):
