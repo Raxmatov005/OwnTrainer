@@ -16,7 +16,7 @@ import json
 
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
 from food.serializers import (
-    MealNestedSerializer,
+    MealSerializer,
     MealCompletionSerializer,
     CompleteMealSerializer,
     MealDetailSerializer,
