@@ -253,14 +253,6 @@ class MealViewSet(viewsets.ModelViewSet):
         meal.delete()
         return Response({"message": _("Meal deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
-
-
-class MealViewSet(viewsets.ModelViewSet):
-    queryset = Meal.objects.all()
-    serializer_class = MealNestedSerializer
-    permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
     # Normal create/update remain as JSON-based endpoints.
 
     # Custom action for uploading food_photo separately

@@ -482,14 +482,6 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-
-
-class ExerciseBlockViewSet(viewsets.ModelViewSet):
-    queryset = ExerciseBlock.objects.all()
-    serializer_class = NestedExerciseBlockSerializer
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
     # 1) Regular create with JSON
     # Your create method can remain as-is, no changes required if you want purely JSON.
 
