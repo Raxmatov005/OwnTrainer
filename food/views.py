@@ -35,7 +35,7 @@ class MealViewSet(viewsets.ModelViewSet):
     """
     queryset = Meal.objects.all()
     serializer_class = MealNestedSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
