@@ -30,7 +30,7 @@ class MealViewSet(viewsets.ModelViewSet):
     """
     queryset = Meal.objects.all()
     serializer_class = MealSerializer
-    permission_classes = [permissions.IsAuthenticated]  # or IsAdminOrReadOnly
+    permission_classes = [IsAuthenticated]  # or IsAdminOrReadOnly
     parser_classes = [JSONParser]  # JSON only for main create/update
 
     def get_queryset(self):
