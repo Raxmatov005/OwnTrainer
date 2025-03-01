@@ -277,34 +277,31 @@ class SessionViewSet(viewsets.ModelViewSet):
 
 
 
-
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     queryset = ExerciseBlock.objects.all()
     serializer_class = NestedExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-
     def get_queryset(self):
         """
         - Admins: Get all ExerciseBlocks
-        - Users: Get only the blocks assigned to their active sessions
+        - Other Users: Get only the blocks assigned to their active sessions
         """
         user = self.request.user
 
-        # If the user is an admin, return all ExerciseBlocks
+        # If admin/staff, return all
         if user.is_superuser or user.is_staff:
             return ExerciseBlock.objects.all()
 
-        # Check if the user has an active program
+        # Check active program & subscription
+        from users_app.models import UserProgram, SessionCompletion
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return ExerciseBlock.objects.none()
 
-        # Get all sessions assigned to the user
+        # Get session IDs assigned to the user
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
-
-        # Retrieve ExerciseBlocks that belong to the user's sessions
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
     def get_serializer_context(self):
@@ -314,97 +311,93 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             "language": language,
             "request": self.request
         }
-    #
-    # @swagger_auto_schema(
-    #     operation_description="Create a new ExerciseBlock with an optional image and nested exercises. "
-    #                           "IDs for the block and exercises are assigned automatically by the database. "
-    #                           "Sequence numbers for exercises are also auto-assigned based on order in the payload.",
-    #     request_body=openapi.Schema(
-    #         type=openapi.TYPE_OBJECT,
-    #         properties={
-    #             'block_name': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 description="Name of the exercise block."
-    #             ),
-    #             'block_image': openapi.Schema(
-    #                 type=openapi.TYPE_FILE,
-    #                 description="Optional image file for the exercise block."
-    #             ),
-    #             'block_kkal': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 description="Approx total kkal (decimal)."
-    #             ),
-    #             'block_water_amount': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 description="Water amount in ml (decimal)."
-    #             ),
-    #             'description': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 description="Description of the exercise block."
-    #             ),
-    #             'video_url': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 format=openapi.FORMAT_URI,
-    #                 description="URL for an associated video (optional)."
-    #             ),
-    #             'block_time': openapi.Schema(
-    #                 type=openapi.TYPE_INTEGER,
-    #                 description="Estimated total time in minutes."
-    #             ),
-    #             'calories_burned': openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 description="Total calories burned in this block (decimal)."
-    #             ),
-    #             'exercises': openapi.Schema(
-    #                 type=openapi.TYPE_ARRAY,
-    #                 items=openapi.Items(
-    #                     type=openapi.TYPE_OBJECT,
-    #                     properties={
-    #                         # id is read_only; if provided, it updates existing exercise
-    #                         'id': openapi.Schema(
-    #                             type=openapi.TYPE_INTEGER,
-    #                             description="(Optional) ID of an existing exercise to update."
-    #                         ),
-    #                         'name': openapi.Schema(
-    #                             type=openapi.TYPE_STRING,
-    #                             description="Name of the exercise."
-    #                         ),
-    #                         'exercise_time': openapi.Schema(
-    #                             type=openapi.TYPE_STRING,
-    #                             description="Duration in HH:MM:SS format, e.g. '00:05:00'."
-    #                         ),
-    #                         'description': openapi.Schema(
-    #                             type=openapi.TYPE_STRING,
-    #                             description="Description of the exercise."
-    #                         ),
-    #                         'image': openapi.Schema(
-    #                             type=openapi.TYPE_FILE,
-    #                             description="Optional image file for the exercise."
-    #                         ),
-    #                         # sequence_number is auto-assigned, so we omit it from the request.
-    #                     }
-    #                 ),
-    #                 description="Optional list of exercises to create/update with this block."
-    #             ),
-    #         },
-    #         required=['block_name']  # or any other fields you require
-    #     ),
-    #     responses={
-    #         201: openapi.Response(
-    #             description="Successfully created an ExerciseBlock with nested exercises.",
-    #             schema=NestedExerciseBlockSerializer()
-    #         )
-    #     }
-    # )
+
+    @swagger_auto_schema(
+        operation_description="Create a new ExerciseBlock with (optional) block_image and nested exercises. "
+                              "Sequence numbers for nested exercises auto-assigned by order.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'block_name': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Name of the exercise block."
+                ),
+                'block_image': openapi.Schema(
+                    type=openapi.TYPE_FILE,
+                    description="Optional image file for the exercise block."
+                ),
+                'block_kkal': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Approx total kkal (decimal)."
+                ),
+                'block_water_amount': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Water amount in ml (decimal)."
+                ),
+                'description': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Description of the exercise block."
+                ),
+                'video_url': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format=openapi.FORMAT_URI,
+                    description="URL for an associated video (optional)."
+                ),
+                'block_time': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="Estimated total time in minutes."
+                ),
+                'calories_burned': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Total calories burned in this block (decimal)."
+                ),
+                'exercises': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            # We remove 'image' here to avoid Swagger errors.
+                            'id': openapi.Schema(
+                                type=openapi.TYPE_INTEGER,
+                                description="(Optional) ID of an existing exercise to update."
+                            ),
+                            'name': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Name of the exercise."
+                            ),
+                            'exercise_time': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Duration in HH:MM:SS format, e.g. '00:05:00'."
+                            ),
+                            'description': openapi.Schema(
+                                type=openapi.TYPE_STRING,
+                                description="Description of the exercise."
+                            ),
+                            # 'image' is intentionally omitted from Swagger schema
+                        }
+                    ),
+                    description="Optional list of exercises to create/update with this block."
+                ),
+            },
+            required=['block_name']
+        ),
+        responses={
+            201: openapi.Response(
+                description="Successfully created an ExerciseBlock with nested exercises.",
+                schema=NestedExerciseBlockSerializer()
+            )
+        },
+        consumes=['multipart/form-data']  # to allow block_image upload in the same request
+    )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-
     @swagger_auto_schema(
         operation_description="Update an existing ExerciseBlock. "
-                              "IDs for new exercises are assigned automatically. "
-                              "If you provide an existing exercise ID, that exercise is updated. "
-                              "Unmentioned exercises remain untouched.",
+                              "If you provide 'exercises' with IDs, those exercises get updated. "
+                              "Any new item without an ID creates a new exercise. "
+                              "Unmentioned exercises remain intact. "
+                              "Also optionally update block_image in the same request.",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
@@ -448,7 +441,8 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                         properties={
                             'id': openapi.Schema(
                                 type=openapi.TYPE_INTEGER,
-                                description="ID of an existing exercise to update. Omit to create a new exercise."
+                                description="ID of an existing exercise to update. "
+                                            "Omit to create a new exercise."
                             ),
                             'name': openapi.Schema(
                                 type=openapi.TYPE_STRING,
@@ -462,13 +456,10 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                                 type=openapi.TYPE_STRING,
                                 description="Updated description of the exercise."
                             ),
-                            'image': openapi.Schema(
-                                type=openapi.TYPE_FILE,
-                                description="Optional new image file for the exercise."
-                            ),
+                            # 'image' intentionally omitted
                         }
                     ),
-                    description="List of exercises to create or update. Unmentioned exercises remain untouched."
+                    description="List of exercises to create or update. Unmentioned remain untouched."
                 ),
             }
         ),
@@ -477,15 +468,12 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 description="Successfully updated the ExerciseBlock and any mentioned exercises.",
                 schema=NestedExerciseBlockSerializer()
             )
-        }
+        },
+        consumes=['multipart/form-data']
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    # 1) Regular create with JSON
-    # Your create method can remain as-is, no changes required if you want purely JSON.
-
-    # 2) A custom PATCH route just for uploading/updating the block_image
     @swagger_auto_schema(
         method='patch',
         operation_description="Upload or update the block_image separately.",
@@ -495,7 +483,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 name="block_image",
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload the image file for the ExerciseBlock"
+                description="Upload/replace the image file for the ExerciseBlock"
             )
         ],
         responses={
@@ -503,24 +491,24 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 description="Successfully updated image",
                 schema=NestedExerciseBlockSerializer()
             )
-        }
+        },
     )
     @action(detail=True, methods=['patch'], url_path='upload-image', parser_classes=[MultiPartParser, FormParser])
     def upload_image(self, request, pk=None):
+        """
+        Separate endpoint just for uploading/replacing the ExerciseBlock's block_image.
+        """
         block = self.get_object()
         file_obj = request.FILES.get('block_image', None)
         if not file_obj:
             return Response({"detail": "No file uploaded."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        # Update the block_image field
         block.block_image = file_obj
         block.save()
 
-        # Return updated data
         serializer = self.get_serializer(block)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
 
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
