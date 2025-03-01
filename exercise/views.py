@@ -278,14 +278,13 @@ class SessionViewSet(viewsets.ModelViewSet):
 
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     """
-    Main create/update for ExerciseBlock is JSON-based only.
-    block_image is excluded from these endpoints.
-    We define separate endpoints for uploading images.
+    JSON-only create/update for block + nested exercises (no images).
+    Separate endpoints for images.
     """
     queryset = ExerciseBlock.objects.all()
     serializer_class = ExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [JSONParser]  # JSON-only for main actions
+    parser_classes = [JSONParser]  # main endpoints use JSON only
 
     def get_queryset(self):
         user = self.request.user
@@ -300,93 +299,87 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
-    # (Optional) override destroy or partial_update to check staff, etc. if you like
-
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=ExerciseBlockSerializer,
+        responses={201: ExerciseBlockSerializer},
+        operation_description="Create an ExerciseBlock with nested exercises (JSON-only, no images)."
+    )
     def create(self, request, *args, **kwargs):
-        """
-        Let drf-yasg auto-generate or skip if you'd prefer a custom doc with JSON body.
-
-        If you want an explicit doc, do:
-        @swagger_auto_schema(
-            request_body=ExerciseBlockSerializer,
-            responses={201: ExerciseBlockSerializer}
-        )
-        def create(...):
-            ...
-
-        But crucially no manual_parameters or file fields here.
-        """
+        # check staff if needed
         return super().create(request, *args, **kwargs)
 
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=ExerciseBlockSerializer,
+        responses={200: ExerciseBlockSerializer},
+        operation_description="Update an ExerciseBlock with nested exercises (JSON-only, no images)."
+    )
     def update(self, request, *args, **kwargs):
-        """
-        Same approach as create. JSON only. No file fields.
-        """
         return super().update(request, *args, **kwargs)
 
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=ExerciseBlockSerializer,
+        responses={200: ExerciseBlockSerializer},
+        operation_description="Partially update an ExerciseBlock (JSON-only)."
+    )
     def partial_update(self, request, *args, **kwargs):
-        """
-        JSON-only partial update (no block_image). If you want it, use separate endpoints below.
-        """
         return super().partial_update(request, *args, **kwargs)
 
     # -------------------------------
-    # Separate endpoint to upload block_image
+    # Separate endpoint for block_image
     # -------------------------------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or update the block_image (admins only).",
+        operation_description="Upload or replace the block_image (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name='block_image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload a new block image"
+                description="Upload a block image"
             )
         ],
-        responses={200: "Block image updated"}
+        responses={200: "Success"}
     )
     @action(detail=True, methods=['patch'], url_path='upload-block-image', parser_classes=[MultiPartParser, FormParser])
     def upload_block_image(self, request, pk=None):
+        """
+        Uploads a block_image for this ExerciseBlock in a separate request.
+        """
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
         block = self.get_object()
         file_obj = request.FILES.get('block_image')
         if not file_obj:
-            return Response({"detail": "No block_image file provided"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         block.block_image = file_obj
         block.save()
-        return Response({"message": "Block image updated"}, status=status.HTTP_200_OK)
+        return Response({"message": "Block image uploaded."}, status=status.HTTP_200_OK)
 
     # -------------------------------
-    # Separate endpoint to upload an Exercise image
-    # (One exercise at a time)
+    # Separate endpoint for an Exercise's image
     # -------------------------------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or update an Exercise's image (admins only).",
+        operation_description="Upload or replace an Exercise's image (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name='exercise_id',
                 in_=openapi.IN_PATH,
                 type=openapi.TYPE_INTEGER,
-                description="The ID of the exercise to update"
+                description="ID of the Exercise to update"
             ),
             openapi.Parameter(
                 name='image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload a new image for the exercise"
+                description="New image file for the exercise"
             )
         ],
-        responses={200: "Exercise image updated"}
+        responses={200: "Success"}
     )
     @action(
         detail=True, methods=['patch'],
@@ -401,15 +394,16 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         try:
             exercise = block.exercises.get(id=exercise_id)
         except Exercise.DoesNotExist:
-            return Response({"detail": "Exercise not found in this block"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": "Exercise not found in this block."}, status=status.HTTP_404_NOT_FOUND)
 
         file_obj = request.FILES.get('image')
         if not file_obj:
-            return Response({"detail": "No image file provided"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         exercise.image = file_obj
         exercise.save()
-        return Response({"message": "Exercise image updated"}, status=status.HTTP_200_OK)
+        return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
+
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
 

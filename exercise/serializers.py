@@ -133,11 +133,9 @@ class ProgramSerializer(serializers.ModelSerializer):
 
 
 
-
 class ExerciseSerializer(serializers.ModelSerializer):
     """
-    JSON-based only (no direct file field) for create/update.
-    If you want images, you upload them separately with upload_exercise_image endpoint.
+    JSON-only for create/update. 'image' is excluded here because we upload it separately.
     """
     class Meta:
         model = Exercise
@@ -154,26 +152,20 @@ class ExerciseSerializer(serializers.ModelSerializer):
         data['description'] = translate_field(instance, 'description', language)
         return data
 
-
 class ExerciseBlockSerializer(serializers.ModelSerializer):
     """
-    JSON-based. We do not handle block_image or nested exercise images here.
-    We only handle the text fields + relationships.
+    JSON-only for create/update. 'block_image' is excluded; 'image' in nested exercises is also excluded.
+    We'll handle images in separate endpoints.
     """
     exercises = ExerciseSerializer(many=True, required=False)
 
     class Meta:
         model = ExerciseBlock
         fields = [
-            'id',
-            'block_name',
-            # block_image is excluded from this JSON create/update
-            'block_kkal',
-            'block_water_amount',
-            'description',
-            'video_url',
-            'block_time',
-            'calories_burned',
+            'id', 'block_name',
+            'block_kkal', 'block_water_amount',
+            'description', 'video_url',
+            'block_time', 'calories_burned',
             'exercises'
         ]
         read_only_fields = ['id']
@@ -205,7 +197,6 @@ class ExerciseBlockSerializer(serializers.ModelSerializer):
             for idx, ex_data in enumerate(exercises_data, start=1):
                 ex_id = ex_data.get('id')
                 if ex_id and ex_id in existing_exercises:
-                    # update existing
                     exercise_instance = existing_exercises[ex_id]
                     for field, val in ex_data.items():
                         if field != 'id':
@@ -213,12 +204,12 @@ class ExerciseBlockSerializer(serializers.ModelSerializer):
                     exercise_instance.sequence_number = idx
                     exercise_instance.save()
                 else:
-                    # create new
                     ex_data['sequence_number'] = idx
                     new_exercise = Exercise.objects.create(**ex_data)
                     instance.exercises.add(new_exercise)
 
         return instance
+
 
 class SessionPKSerializer(serializers.ModelSerializer):
     # Instead of nested data, use primary key references.

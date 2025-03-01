@@ -23,15 +23,15 @@ from food.serializers import (
     MealStepSerializer,
 
 )
+
 class MealViewSet(viewsets.ModelViewSet):
     """
-    Main create/update for Meal is JSON-based only, i.e. no 'food_photo' included.
-    If you want to upload a photo, use the separate endpoint upload_food_photo.
+    JSON-only create/update for Meal, plus a separate endpoint for 'food_photo'.
     """
     queryset = Meal.objects.all()
     serializer_class = MealSerializer
-    permission_classes = [IsAuthenticated]  # or IsAdminOrReadOnly
-    parser_classes = [JSONParser]  # JSON only for main create/update
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
@@ -57,52 +57,57 @@ class MealViewSet(viewsets.ModelViewSet):
 
         return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
-    # You can override partial_update/destroy to require staff if you like
-    # We'll show an example for partial_update and destroy:
-
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=MealSerializer,
+        responses={201: MealSerializer},
+        operation_description="Create a Meal (JSON-only). No food_photo here."
+    )
     def create(self, request, *args, **kwargs):
-        # JSON-based create, no file fields
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=MealSerializer,
+        responses={200: MealSerializer},
+        operation_description="Update a Meal (JSON-only). No food_photo here."
+    )
     def update(self, request, pk=None, *args, **kwargs):
-        # JSON-based update
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, pk, *args, **kwargs)
 
-    @swagger_auto_schema(auto_schema=None)
+    @swagger_auto_schema(
+        request_body=MealSerializer,
+        responses={200: MealSerializer},
+        operation_description="Partially update a Meal (JSON-only)."
+    )
     def partial_update(self, request, pk=None, *args, **kwargs):
-        # JSON-based partial update
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, pk, *args, **kwargs)
 
-    @swagger_auto_schema(auto_schema=None)
     def destroy(self, request, pk=None, *args, **kwargs):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, pk, *args, **kwargs)
 
-    # ------------------------------
-    # Upload or update the Meal's photo separately
-    # ------------------------------
+    # ----------------------------------
+    # Separate endpoint to upload 'food_photo'
+    # ----------------------------------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload/replace the food_photo for a Meal (admins only).",
+        operation_description="Upload or update the Meal's food_photo in a separate request (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name='food_photo',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="The meal's new photo"
+                description="New meal photo"
             )
         ],
-        responses={200: "Photo updated"}
+        responses={200: "Success"}
     )
     @action(detail=True, methods=['patch'], url_path='upload-food-photo', parser_classes=[MultiPartParser, FormParser])
     def upload_food_photo(self, request, pk=None):
@@ -112,11 +117,11 @@ class MealViewSet(viewsets.ModelViewSet):
         meal = self.get_object()
         file_obj = request.FILES.get('food_photo')
         if not file_obj:
-            return Response({"detail": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         meal.food_photo = file_obj
         meal.save()
-        return Response({"message": "Meal photo updated"}, status=status.HTTP_200_OK)
+        return Response({"message": "Meal photo uploaded."}, status=status.HTTP_200_OK)
 
 
 class MealStepViewSet(viewsets.ModelViewSet):

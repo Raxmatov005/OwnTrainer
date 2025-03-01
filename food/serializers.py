@@ -117,8 +117,8 @@ class MealStepSerializer(serializers.ModelSerializer):
 
 class MealSerializer(serializers.ModelSerializer):
     """
-    JSON-based only (no direct file field).
-    'food_photo' is excluded. We'll handle it in a separate upload endpoint.
+    JSON-based only for creation/update. 'food_photo' is excluded.
+    We'll handle it in a separate upload endpoint.
     """
     steps = MealStepSerializer(many=True, required=False)
 
@@ -170,7 +170,6 @@ class MealSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
-
 
 class MealCompletionSerializer(serializers.ModelSerializer):
     class Meta:
