@@ -277,18 +277,21 @@ class SessionViewSet(viewsets.ModelViewSet):
 
 
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
+    """
+    Main create/update for ExerciseBlock is JSON-based only.
+    block_image is excluded from these endpoints.
+    We define separate endpoints for uploading images.
+    """
     queryset = ExerciseBlock.objects.all()
-    serializer_class = NestedExerciseBlockSerializer
-    # Only admins can create/update, normal users can read if subscription is active
+    serializer_class = ExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    parser_classes = [JSONParser]  # JSON-only for main actions
 
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser or user.is_staff:
             return ExerciseBlock.objects.all()
 
-        # Non-admin: filter by subscription logic
         from users_app.models import UserProgram, SessionCompletion
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
@@ -297,315 +300,116 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
-    def get_serializer_context(self):
-        language = self.request.query_params.get('lang', 'en')
-        return {
-            **super().get_serializer_context(),
-            "language": language,
-            "request": self.request
-        }
+    # (Optional) override destroy or partial_update to check staff, etc. if you like
 
-    # --------------------------
-    # CREATE
-    # --------------------------
-    @swagger_auto_schema(
-        request_body=None,  # drf-yasg won't try to treat the default serializer as request_body
-        operation_description=(
-            "Create a new ExerciseBlock (admins only) with optional `block_image` and nested exercises. "
-            "Each nested exercise can have an `image`. "
-            "Send everything as multipart/form-data. For the `exercises` field, pass a JSON string. "
-            "Example: exercises=[{\"name\":\"Push Ups\",\"description\":\"desc\"}, ...]. "
-            "Then for images: exercises[0].image=@file in your form."
-        ),
-        consumes=["multipart/form-data"],
-        manual_parameters=[
-            openapi.Parameter(
-                name="block_name",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                required=True,
-                description="Name of the exercise block"
-            ),
-            openapi.Parameter(
-                name="block_image",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="Optional image for the exercise block"
-            ),
-            openapi.Parameter(
-                name="block_kkal",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Approx total kkal (decimal)."
-            ),
-            openapi.Parameter(
-                name="block_water_amount",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Water amount in ml (decimal)."
-            ),
-            openapi.Parameter(
-                name="description",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Description of the exercise block"
-            ),
-            openapi.Parameter(
-                name="video_url",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="URL for an associated video (optional)"
-            ),
-            openapi.Parameter(
-                name="block_time",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_INTEGER,
-                description="Estimated total time in minutes."
-            ),
-            openapi.Parameter(
-                name="calories_burned",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Total calories burned in this block (decimal)."
-            ),
-            openapi.Parameter(
-                name="exercises",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description=(
-                    "JSON array of exercises. Each item may have 'name', 'exercise_time', 'description', and 'image'. "
-                    "But you'll attach the image file as exercises[0].image in form-data, etc."
-                )
-            ),
-        ],
-        responses={
-            201: openapi.Response(
-                description="Successfully created an ExerciseBlock",
-                schema=NestedExerciseBlockSerializer()
-            )
-        }
-    )
+    @swagger_auto_schema(auto_schema=None)
     def create(self, request, *args, **kwargs):
-        # Staff check
-        if not request.user.is_staff:
-            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        """
+        Let drf-yasg auto-generate or skip if you'd prefer a custom doc with JSON body.
+
+        If you want an explicit doc, do:
+        @swagger_auto_schema(
+            request_body=ExerciseBlockSerializer,
+            responses={201: ExerciseBlockSerializer}
+        )
+        def create(...):
+            ...
+
+        But crucially no manual_parameters or file fields here.
+        """
         return super().create(request, *args, **kwargs)
 
-    # --------------------------
-    # UPDATE
-    # --------------------------
-    @swagger_auto_schema(
-        request_body=None,  # remove conflicts with manual form parameters
-        operation_description=(
-            "Update an existing ExerciseBlock (admins only). "
-            "You can replace `block_image`. For exercises, pass a JSON array in `exercises`. "
-            "If an exercise has an 'id', it's updated; otherwise it's created."
-        ),
-        consumes=["multipart/form-data"],
-        manual_parameters=[
-            openapi.Parameter(
-                name="block_name",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated block name"
-            ),
-            openapi.Parameter(
-                name="block_image",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="New or updated block image"
-            ),
-            openapi.Parameter(
-                name="block_kkal",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated total kkal"
-            ),
-            openapi.Parameter(
-                name="block_water_amount",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated water amount in ml"
-            ),
-            openapi.Parameter(
-                name="description",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated block description"
-            ),
-            openapi.Parameter(
-                name="video_url",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated video URL"
-            ),
-            openapi.Parameter(
-                name="block_time",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_INTEGER,
-                description="Updated total time in minutes"
-            ),
-            openapi.Parameter(
-                name="calories_burned",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated calories burned"
-            ),
-            openapi.Parameter(
-                name="exercises",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description=(
-                    "JSON array of exercises to create/update. For file fields, do exercises[0].image, etc."
-                )
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="Successfully updated ExerciseBlock",
-                schema=NestedExerciseBlockSerializer()
-            )
-        }
-    )
+    @swagger_auto_schema(auto_schema=None)
     def update(self, request, *args, **kwargs):
-        if not request.user.is_staff:
-            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        """
+        Same approach as create. JSON only. No file fields.
+        """
         return super().update(request, *args, **kwargs)
 
-    # --------------------------
-    # PARTIAL UPDATE
-    # --------------------------
+    @swagger_auto_schema(auto_schema=None)
+    def partial_update(self, request, *args, **kwargs):
+        """
+        JSON-only partial update (no block_image). If you want it, use separate endpoints below.
+        """
+        return super().partial_update(request, *args, **kwargs)
+
+    # -------------------------------
+    # Separate endpoint to upload block_image
+    # -------------------------------
     @swagger_auto_schema(
         method='patch',
-        request_body=None,
-        operation_description=(
-            "Partially update an existing ExerciseBlock (admins only). "
-            "For example, you can send only `block_name` or only `exercises`. "
-            "Send multipart/form-data if you want to update `block_image` or nested exercise images. "
-            "Example: exercises=[{\"id\":123,\"name\":\"NewName\",\"image\":...},...]"
-        ),
-        consumes=["multipart/form-data"],
-        manual_parameters=[
-            openapi.Parameter(
-                name="block_name",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated block name (optional)"
-            ),
-            openapi.Parameter(
-                name="block_image",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="New or updated block image"
-            ),
-            openapi.Parameter(
-                name="block_kkal",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated total kkal"
-            ),
-            openapi.Parameter(
-                name="block_water_amount",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated water amount in ml"
-            ),
-            openapi.Parameter(
-                name="description",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated block description"
-            ),
-            openapi.Parameter(
-                name="video_url",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated video URL"
-            ),
-            openapi.Parameter(
-                name="block_time",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_INTEGER,
-                description="Updated total time in minutes"
-            ),
-            openapi.Parameter(
-                name="calories_burned",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description="Updated calories burned"
-            ),
-            openapi.Parameter(
-                name="exercises",
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_STRING,
-                description=(
-                    "JSON array of exercises to create/update. For file fields, do exercises[0].image, etc."
-                )
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="Successfully partially updated ExerciseBlock",
-                schema=NestedExerciseBlockSerializer()
-            )
-        }
-    )
-    @action(detail=True, methods=['patch'], url_path='partial-update')  # if you want a custom route, or you can rename
-    def partial_update_block(self, request, pk=None):
-        # If you want a custom route, else you can just override partial_update normally
-        if not request.user.is_staff:
-            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
-        return super().partial_update(request, pk, *args, **kwargs)
-
-    # Alternatively, if you want the standard PATCH /exerciseblocks/<id>:
-    # Just rename partial_update_block -> partial_update (and remove the @action decorator).
-    # The code is the same, but it replaces the DRF default partial_update method.
-
-    # --------------------------
-    # DESTROY
-    # --------------------------
-    def destroy(self, request, *args, **kwargs):
-        if not request.user.is_staff:
-            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
-        return super().destroy(request, *args, **kwargs)
-
-    # --------------------------
-    # UPLOAD BLOCK IMAGE ALONE
-    # --------------------------
-    @swagger_auto_schema(
-        method='patch',
-        operation_description="Upload or replace only the block_image via a separate endpoint (admins only).",
+        operation_description="Upload or update the block_image (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
-                name="block_image",
+                name='block_image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
                 description="Upload a new block image"
             )
         ],
-        responses={
-            200: openapi.Response(
-                description="Block image updated",
-                schema=NestedExerciseBlockSerializer()
-            )
-        }
+        responses={200: "Block image updated"}
     )
-    @action(detail=True, methods=['patch'], url_path='upload-image', parser_classes=[MultiPartParser, FormParser])
-    def upload_image(self, request, pk=None):
+    @action(detail=True, methods=['patch'], url_path='upload-block-image', parser_classes=[MultiPartParser, FormParser])
+    def upload_block_image(self, request, pk=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
         block = self.get_object()
         file_obj = request.FILES.get('block_image')
         if not file_obj:
-            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "No block_image file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         block.block_image = file_obj
         block.save()
-        serializer = self.get_serializer(block)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({"message": "Block image updated"}, status=status.HTTP_200_OK)
 
+    # -------------------------------
+    # Separate endpoint to upload an Exercise image
+    # (One exercise at a time)
+    # -------------------------------
+    @swagger_auto_schema(
+        method='patch',
+        operation_description="Upload or update an Exercise's image (admins only).",
+        consumes=['multipart/form-data'],
+        manual_parameters=[
+            openapi.Parameter(
+                name='exercise_id',
+                in_=openapi.IN_PATH,
+                type=openapi.TYPE_INTEGER,
+                description="The ID of the exercise to update"
+            ),
+            openapi.Parameter(
+                name='image',
+                in_=openapi.IN_FORM,
+                type=openapi.TYPE_FILE,
+                description="Upload a new image for the exercise"
+            )
+        ],
+        responses={200: "Exercise image updated"}
+    )
+    @action(
+        detail=True, methods=['patch'],
+        url_path=r'upload-exercise-image/(?P<exercise_id>\d+)',
+        parser_classes=[MultiPartParser, FormParser]
+    )
+    def upload_exercise_image(self, request, pk=None, exercise_id=None):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+
+        block = self.get_object()
+        try:
+            exercise = block.exercises.get(id=exercise_id)
+        except Exercise.DoesNotExist:
+            return Response({"detail": "Exercise not found in this block"}, status=status.HTTP_404_NOT_FOUND)
+
+        file_obj = request.FILES.get('image')
+        if not file_obj:
+            return Response({"detail": "No image file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        exercise.image = file_obj
+        exercise.save()
+        return Response({"message": "Exercise image updated"}, status=status.HTTP_200_OK)
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]
 

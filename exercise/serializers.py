@@ -45,15 +45,106 @@ class ProgramSerializer(serializers.ModelSerializer):
         return data
 
 
-class NestedExerciseSerializer(serializers.ModelSerializer):
-    """
-    Includes `image` so each exercise can have its own image.
-    """
-    image = serializers.ImageField(required=False, allow_null=True)
+# class NestedExerciseSerializer(serializers.ModelSerializer):
+#     """
+#     Includes `image` so each exercise can have its own image.
+#     """
+#     image = serializers.ImageField(required=False, allow_null=True)
+#
+#     class Meta:
+#         model = Exercise
+#         fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image']
+#         read_only_fields = ['id', 'sequence_number']
+#
+#     def to_representation(self, instance):
+#         data = super().to_representation(instance)
+#         language = self.context.get('language', 'en')
+#         data['name'] = translate_field(instance, 'name', language)
+#         data['description'] = translate_field(instance, 'description', language)
+#         return data
+#
+#
+# class NestedExerciseBlockSerializer(serializers.ModelSerializer):
+#     """
+#     Includes `block_image` at the top level, plus a nested array of `exercises`,
+#     each of which can have an `image`.
+#     """
+#     block_image = serializers.ImageField(required=False, allow_null=True)
+#     exercises = NestedExerciseSerializer(many=True, required=False)
+#
+#     class Meta:
+#         model = ExerciseBlock
+#         fields = [
+#             'id',
+#             'block_name',
+#             'block_image',
+#             'block_kkal',
+#             'block_water_amount',
+#             'description',
+#             'video_url',
+#             'block_time',
+#             'calories_burned',
+#             'exercises'
+#         ]
+#         read_only_fields = ['id']
+#
+#     def to_representation(self, instance):
+#         data = super().to_representation(instance)
+#         language = self.context.get('language', 'en')
+#         data['block_name'] = translate_field(instance, 'block_name', language)
+#         data['description'] = translate_field(instance, 'description', language)
+#         return data
+#
+#     def create(self, validated_data):
+#         exercises_data = validated_data.pop('exercises', [])
+#         block = ExerciseBlock.objects.create(**validated_data)
+#         for idx, ex_data in enumerate(exercises_data, start=1):
+#             ex_data['sequence_number'] = idx
+#             exercise = Exercise.objects.create(**ex_data)
+#             block.exercises.add(exercise)
+#         return block
+#
+#     def update(self, instance, validated_data):
+#         exercises_data = validated_data.pop('exercises', None)
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+#
+#         if exercises_data is not None:
+#             existing_exercises = {ex.id: ex for ex in instance.exercises.all()}
+#             for idx, ex_data in enumerate(exercises_data, start=1):
+#                 ex_id = ex_data.get('id')
+#                 if ex_id and ex_id in existing_exercises:
+#                     # Update existing exercise
+#                     exercise_instance = existing_exercises[ex_id]
+#                     for field, val in ex_data.items():
+#                         if field == 'id':
+#                             continue
+#                         setattr(exercise_instance, field, val)
+#                     exercise_instance.sequence_number = idx
+#                     exercise_instance.save()
+#                 else:
+#                     # Create new exercise
+#                     ex_data['sequence_number'] = idx
+#                     new_exercise = Exercise.objects.create(**ex_data)
+#                     instance.exercises.add(new_exercise)
+#
+#         return instance
 
+
+
+
+class ExerciseSerializer(serializers.ModelSerializer):
+    """
+    JSON-based only (no direct file field) for create/update.
+    If you want images, you upload them separately with upload_exercise_image endpoint.
+    """
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image']
+        fields = [
+            'id', 'name', 'sequence_number',
+            'exercise_time', 'description'
+        ]
         read_only_fields = ['id', 'sequence_number']
 
     def to_representation(self, instance):
@@ -64,20 +155,19 @@ class NestedExerciseSerializer(serializers.ModelSerializer):
         return data
 
 
-class NestedExerciseBlockSerializer(serializers.ModelSerializer):
+class ExerciseBlockSerializer(serializers.ModelSerializer):
     """
-    Includes `block_image` at the top level, plus a nested array of `exercises`,
-    each of which can have an `image`.
+    JSON-based. We do not handle block_image or nested exercise images here.
+    We only handle the text fields + relationships.
     """
-    block_image = serializers.ImageField(required=False, allow_null=True)
-    exercises = NestedExerciseSerializer(many=True, required=False)
+    exercises = ExerciseSerializer(many=True, required=False)
 
     class Meta:
         model = ExerciseBlock
         fields = [
             'id',
             'block_name',
-            'block_image',
+            # block_image is excluded from this JSON create/update
             'block_kkal',
             'block_water_amount',
             'description',
@@ -115,21 +205,21 @@ class NestedExerciseBlockSerializer(serializers.ModelSerializer):
             for idx, ex_data in enumerate(exercises_data, start=1):
                 ex_id = ex_data.get('id')
                 if ex_id and ex_id in existing_exercises:
-                    # Update existing exercise
+                    # update existing
                     exercise_instance = existing_exercises[ex_id]
                     for field, val in ex_data.items():
-                        if field == 'id':
-                            continue
-                        setattr(exercise_instance, field, val)
+                        if field != 'id':
+                            setattr(exercise_instance, field, val)
                     exercise_instance.sequence_number = idx
                     exercise_instance.save()
                 else:
-                    # Create new exercise
+                    # create new
                     ex_data['sequence_number'] = idx
                     new_exercise = Exercise.objects.create(**ex_data)
                     instance.exercises.add(new_exercise)
 
         return instance
+
 class SessionPKSerializer(serializers.ModelSerializer):
     # Instead of nested data, use primary key references.
     block = serializers.PrimaryKeyRelatedField(
