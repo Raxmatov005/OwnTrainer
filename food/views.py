@@ -117,6 +117,8 @@ class MealViewSet(viewsets.ModelViewSet):
         meal.food_photo = file_obj
         meal.save()
         return Response({"message": "Meal photo updated"}, status=status.HTTP_200_OK)
+
+
 class MealStepViewSet(viewsets.ModelViewSet):
     """
     (Optional) Manage MealSteps individually.

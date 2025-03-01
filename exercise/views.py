@@ -454,7 +454,7 @@ class CompleteBlockView(APIView):
 
 class ExerciseViewSet(viewsets.ModelViewSet):
     queryset = Exercise.objects.all()
-    serializer_class = NestedExerciseSerializer
+    serializer_class = ExerciseSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
 
     def get_user_language(self):
@@ -491,7 +491,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         tags=['Exercises'],
         operation_description=_("Create a new exercise."),
-        request_body=NestedExerciseSerializer,
+        request_body=ExerciseSerializer,
         consumes=['multipart/form-data']
     )
     def create(self, request):
