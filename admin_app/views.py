@@ -17,6 +17,9 @@ from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
 from rest_framework.generics import GenericAPIView  # ✅ Add this import
 from itertools import chain
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 
 from admin_app.serializers import AdminLoginSerializer  # ✅ Ensure this is correctly imported
 
