@@ -129,7 +129,7 @@ class MealStepViewSet(viewsets.ModelViewSet):
     (Optional) Manage MealSteps individually.
     """
     queryset = MealSteps.objects.all()
-    serializer_class = MealStepSerializer
+    serializer_class = MealStepListSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
 

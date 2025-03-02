@@ -100,6 +100,7 @@ def translate_field(instance, field_name, language):
 #
 
 
+
 class MealStepListSerializer(serializers.ModelSerializer):
     """
     For listing steps. We'll keep it simple (no file fields).
@@ -266,3 +267,15 @@ class MealCreateUpdateSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
+
+
+
+
+class MealCompletionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealCompletion
+        fields = ['id', 'meal', 'session', 'is_completed', 'completion_date', 'meal_time']
+
+class CompleteMealSerializer(serializers.Serializer):
+    session_id = serializers.IntegerField(required=True)
+    meal_id = serializers.IntegerField(required=True)
