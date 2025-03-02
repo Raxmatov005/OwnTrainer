@@ -276,15 +276,26 @@ class SessionViewSet(viewsets.ModelViewSet):
         return Response({"message": _("Today's session has been reset successfully.")}, status=200)
 
 
+
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
     """
-    JSON-only create/update for block + nested exercises (no images).
-    Separate endpoints for images.
+    List/Detail: show URL fields for images
+    Create/Update: JSON-only (no block_image).
+    Separate endpoints for uploading images.
     """
     queryset = ExerciseBlock.objects.all()
-    serializer_class = ExerciseBlockSerializer
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly, IsSubscriptionActive]
-    parser_classes = [JSONParser]  # main endpoints use JSON only
+    # By default, main create/update is JSON
+    parser_classes = [JSONParser]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ExerciseBlockListSerializer
+        elif self.action == 'retrieve':
+            return ExerciseBlockDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return ExerciseBlockCreateUpdateSerializer
+        return ExerciseBlockListSerializer  # fallback
 
     def get_queryset(self):
         user = self.request.user
@@ -300,52 +311,73 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
     @swagger_auto_schema(
-        request_body=ExerciseBlockSerializer,
-        responses={201: ExerciseBlockSerializer},
-        operation_description="Create an ExerciseBlock with nested exercises (JSON-only, no images)."
+        operation_description="List ExerciseBlocks",
+        responses={200: ExerciseBlockListSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a single ExerciseBlock",
+        responses={200: ExerciseBlockDetailSerializer()}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Create an ExerciseBlock (JSON-only). No block_image here.",
+        request_body=ExerciseBlockCreateUpdateSerializer,
+        responses={201: ExerciseBlockDetailSerializer()}
     )
     def create(self, request, *args, **kwargs):
-        # check staff if needed
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        request_body=ExerciseBlockSerializer,
-        responses={200: ExerciseBlockSerializer},
-        operation_description="Update an ExerciseBlock with nested exercises (JSON-only, no images)."
+        operation_description="Update an ExerciseBlock (JSON-only). No block_image here.",
+        request_body=ExerciseBlockCreateUpdateSerializer,
+        responses={200: ExerciseBlockDetailSerializer()}
     )
     def update(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        request_body=ExerciseBlockSerializer,
-        responses={200: ExerciseBlockSerializer},
-        operation_description="Partially update an ExerciseBlock (JSON-only)."
+        operation_description="Partially update an ExerciseBlock (JSON-only). No block_image here.",
+        request_body=ExerciseBlockCreateUpdateSerializer,
+        responses={200: ExerciseBlockDetailSerializer()}
     )
     def partial_update(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, *args, **kwargs)
 
-    # -------------------------------
-    # Separate endpoint for block_image
-    # -------------------------------
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+    # -----------
+    # Upload block_image
+    # -----------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or replace the block_image (admins only).",
+        operation_description="Upload or replace block_image (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name='block_image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="Upload a block image"
+                description="Upload block image"
             )
         ],
-        responses={200: "Success"}
+        responses={200: "Block image uploaded"}
     )
     @action(detail=True, methods=['patch'], url_path='upload-block-image', parser_classes=[MultiPartParser, FormParser])
     def upload_block_image(self, request, pk=None):
-        """
-        Uploads a block_image for this ExerciseBlock in a separate request.
-        """
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
@@ -358,9 +390,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         block.save()
         return Response({"message": "Block image uploaded."}, status=status.HTTP_200_OK)
 
-    # -------------------------------
-    # Separate endpoint for an Exercise's image
-    # -------------------------------
+    # -----------
+    # Upload an Exercise's image
+    # -----------
     @swagger_auto_schema(
         method='patch',
         operation_description="Upload or replace an Exercise's image (admins only).",
@@ -370,22 +402,18 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
                 name='exercise_id',
                 in_=openapi.IN_PATH,
                 type=openapi.TYPE_INTEGER,
-                description="ID of the Exercise to update"
+                description="ID of the Exercise"
             ),
             openapi.Parameter(
                 name='image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="New image file for the exercise"
+                description="New image file"
             )
         ],
-        responses={200: "Success"}
+        responses={200: "Exercise image updated"}
     )
-    @action(
-        detail=True, methods=['patch'],
-        url_path=r'upload-exercise-image/(?P<exercise_id>\d+)',
-        parser_classes=[MultiPartParser, FormParser]
-    )
+    @action(detail=True, methods=['patch'], url_path='upload-exercise-image/(?P<exercise_id>\d+)', parser_classes=[MultiPartParser, FormParser])
     def upload_exercise_image(self, request, pk=None, exercise_id=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
@@ -403,6 +431,27 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         exercise.image = file_obj
         exercise.save()
         return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
+
+
+class ExerciseViewSet(viewsets.ModelViewSet):
+    """
+    If you also need a separate endpoint for listing or creating Exercises individually,
+    do the same approach: separate out a list serializer, detail serializer, create/update serializer.
+    """
+    queryset = Exercise.objects.all()
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    parser_classes = [JSONParser]
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return ExerciseListSerializer
+        elif self.action == 'retrieve':
+            return ExerciseDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return ExerciseCreateUpdateSerializer
+        return ExerciseListSerializer
+
+
 
 class CompleteBlockView(APIView):
     permission_classes = [IsAuthenticated]

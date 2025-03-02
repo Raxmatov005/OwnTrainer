@@ -100,13 +100,27 @@ def translate_field(instance, field_name, language):
 #
 
 
+class MealStepListSerializer(serializers.ModelSerializer):
+    """
+    For listing steps. We'll keep it simple (no file fields).
+    """
+    class Meta:
+        model = MealSteps
+        fields = ['id', 'title', 'step_time', 'step_number']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        language = self.context.get("language", "en")
+        data['title'] = translate_field(instance, 'title', language)
+        return data
 
-class MealStepSerializer(serializers.ModelSerializer):
+class MealStepDetailSerializer(serializers.ModelSerializer):
+    """
+    For retrieving a single step if needed. No file fields anyway.
+    """
     class Meta:
         model = MealSteps
         fields = ['id', 'title', 'text', 'step_time', 'step_number']
-        read_only_fields = ['id', 'step_number']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -115,12 +129,102 @@ class MealStepSerializer(serializers.ModelSerializer):
         data['text'] = translate_field(instance, 'text', language)
         return data
 
-class MealSerializer(serializers.ModelSerializer):
+
+class MealListSerializer(serializers.ModelSerializer):
     """
-    JSON-based only for creation/update. 'food_photo' is excluded.
-    We'll handle it in a separate upload endpoint.
+    For listing meals. We'll show a 'food_photo_url' instead of an ImageField.
     """
-    steps = MealStepSerializer(many=True, required=False)
+    food_photo_url = serializers.SerializerMethodField()
+    steps = serializers.SerializerMethodField()  # if you want a brief step list
+
+    class Meta:
+        model = Meal
+        fields = [
+            'id',
+            'meal_type',
+            'food_name',
+            'calories',
+            'water_content',
+            'preparation_time',
+            'description',
+            'video_url',
+            'food_photo_url',
+            'steps'
+        ]
+
+    def get_food_photo_url(self, obj):
+        if not obj.food_photo:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.food_photo.url)
+        return obj.food_photo.url
+
+    def get_steps(self, obj):
+        steps = obj.steps.all()
+        language = self.context.get("language", "en")
+        return [
+            {
+                "id": s.id,
+                "title": translate_field(s, 'title', language),
+                "step_number": s.step_number
+            }
+            for s in steps
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        language = self.context.get("language", "en")
+        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
+        data['food_name'] = translate_field(instance, 'food_name', language)
+        data['description'] = translate_field(instance, 'description', language)
+        return data
+
+class MealDetailSerializer(serializers.ModelSerializer):
+    """
+    For retrieving a single meal. Also uses food_photo_url instead of the actual file.
+    """
+    food_photo_url = serializers.SerializerMethodField()
+    steps = MealStepDetailSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Meal
+        fields = [
+            'id',
+            'meal_type',
+            'food_name',
+            'calories',
+            'water_content',
+            'preparation_time',
+            'description',
+            'video_url',
+            'food_photo_url',
+            'steps'
+        ]
+
+    def get_food_photo_url(self, obj):
+        if not obj.food_photo:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.food_photo.url)
+        return obj.food_photo.url
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        language = self.context.get("language", "en")
+        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
+        data['food_name'] = translate_field(instance, 'food_name', language)
+        data['description'] = translate_field(instance, 'description', language)
+        return data
+
+
+class MealCreateUpdateSerializer(serializers.ModelSerializer):
+    """
+    JSON-only create/update for Meal. 'food_photo' excluded.
+    We'll handle that in a separate upload endpoint.
+    """
+    steps = MealStepDetailSerializer(many=True, required=False)
 
     class Meta:
         model = Meal
@@ -136,14 +240,6 @@ class MealSerializer(serializers.ModelSerializer):
             'steps'
         ]
         read_only_fields = ['id']
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        language = self.context.get("language", "en")
-        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
-        data['food_name'] = translate_field(instance, 'food_name', language)
-        data['description'] = translate_field(instance, 'description', language)
-        return data
 
     def create(self, validated_data):
         steps_data = validated_data.pop('steps', [])
@@ -170,43 +266,3 @@ class MealSerializer(serializers.ModelSerializer):
                 else:
                     MealSteps.objects.create(meal=instance, **step_dict)
         return instance
-
-class MealCompletionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MealCompletion
-        fields = ['id', 'meal', 'session', 'is_completed', 'completion_date', 'meal_time']
-
-class CompleteMealSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    meal_id = serializers.IntegerField(required=True)
-
-class MealDetailSerializer(serializers.ModelSerializer):
-    steps = MealStepSerializer(many=True, read_only=True)
-    class Meta:
-        model = Meal
-        fields = [
-            'id',
-            'meal_type',
-            'food_name',
-            'calories',
-            'water_content',
-            'food_photo',
-            'preparation_time',
-            'description',
-            'video_url',
-            'steps'
-        ]
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        request = self.context.get('request', None)
-        language = self.context.get("language", "en")
-        data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
-        data['food_name'] = translate_field(instance, 'food_name', language)
-        data['description'] = translate_field(instance, 'description', language)
-        if instance.food_photo and request is not None:
-            data['food_photo'] = request.build_absolute_uri(instance.food_photo.url)
-        elif instance.food_photo:
-            data['food_photo'] = instance.food_photo.url
-        else:
-            data['food_photo'] = None
-        return data

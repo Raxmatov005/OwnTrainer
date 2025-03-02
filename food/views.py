@@ -13,35 +13,23 @@ from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 import json
 
-
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
-from food.serializers import (
-    MealSerializer,
-    MealCompletionSerializer,
-    CompleteMealSerializer,
-    MealDetailSerializer,
-    MealStepSerializer,
+from food.serializers import *
 
-)
 
 class MealViewSet(viewsets.ModelViewSet):
     """
     JSON-only create/update for Meal, plus a separate endpoint for 'food_photo'.
     """
     queryset = Meal.objects.all()
-    serializer_class = MealSerializer
     permission_classes = [IsAuthenticated]
-    parser_classes = [JSONParser]
+    parser_classes = [JSONParser]  # main endpoints: JSON only
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return Meal.objects.none()
 
         user = self.request.user
-        if not user.is_authenticated:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(_("Authentication is required."))
-
         if user.is_staff:
             return Meal.objects.all().prefetch_related("steps")
 
@@ -50,38 +38,36 @@ class MealViewSet(viewsets.ModelViewSet):
             return Meal.objects.none()
 
         has_active_subscription = UserSubscription.objects.filter(
-            user=user, is_active=True, end_date__gte=timezone.now().date()
+            user=user,
+            is_active=True,
+            end_date__gte=user_program.end_date  # or timezone.now() if you prefer
         ).exists()
+
         if not has_active_subscription:
             return Meal.objects.none()
 
         return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
 
-    @swagger_auto_schema(
-        request_body=MealSerializer,
-        responses={201: MealSerializer},
-        operation_description="Create a Meal (JSON-only). No food_photo here."
-    )
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return MealListSerializer
+        elif self.action == 'retrieve':
+            return MealDetailSerializer
+        elif self.action in ['create', 'update', 'partial_update']:
+            return MealCreateUpdateSerializer
+        return MealListSerializer
+
+    # If you want staff-only creation
     def create(self, request, *args, **kwargs):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        request_body=MealSerializer,
-        responses={200: MealSerializer},
-        operation_description="Update a Meal (JSON-only). No food_photo here."
-    )
     def update(self, request, pk=None, *args, **kwargs):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, pk, *args, **kwargs)
 
-    @swagger_auto_schema(
-        request_body=MealSerializer,
-        responses={200: MealSerializer},
-        operation_description="Partially update a Meal (JSON-only)."
-    )
     def partial_update(self, request, pk=None, *args, **kwargs):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
@@ -92,36 +78,50 @@ class MealViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, pk, *args, **kwargs)
 
-    # ----------------------------------
-    # Separate endpoint to upload 'food_photo'
-    # ----------------------------------
+    @swagger_auto_schema(
+        operation_description="List Meals",
+        responses={200: MealListSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a single Meal",
+        responses={200: MealDetailSerializer()}
+    )
+    def retrieve(self, request, pk=None, *args, **kwargs):
+        return super().retrieve(request, pk, *args, **kwargs)
+
+    # ----------------------------
+    # Upload the meal's food_photo in a separate endpoint
+    # ----------------------------
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or update the Meal's food_photo in a separate request (admins only).",
+        operation_description="Upload or replace the Meal's food_photo (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
             openapi.Parameter(
                 name='food_photo',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="New meal photo"
+                description="The new meal photo"
             )
         ],
-        responses={200: "Success"}
+        responses={200: "Meal photo updated"}
     )
-    @action(detail=True, methods=['patch'], url_path='upload-food-photo', parser_classes=[MultiPartParser, FormParser])
-    def upload_food_photo(self, request, pk=None):
+    @action(detail=True, methods=['patch'], url_path='upload-photo', parser_classes=[MultiPartParser, FormParser])
+    def upload_photo(self, request, pk=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
         meal = self.get_object()
-        file_obj = request.FILES.get('food_photo')
+        file_obj = request.FILES.get('food_photo', None)
         if not file_obj:
             return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         meal.food_photo = file_obj
         meal.save()
-        return Response({"message": "Meal photo uploaded."}, status=status.HTTP_200_OK)
+        return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
 
 
 class MealStepViewSet(viewsets.ModelViewSet):

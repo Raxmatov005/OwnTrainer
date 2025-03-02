@@ -10,8 +10,8 @@ from django.db.models import Count, Sum, Q
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
 from users_app.models import User, UserProgram, SessionCompletion, Session, Meal, Exercise
-from food.serializers import MealSerializer
-from exercise.serializers import ExerciseSerializer
+from food.serializers import MealListSerializer
+from exercise.serializers import ExerciseBlockListSerializer
 from .pagination import AdminPageNumberPagination
 from users_app.serializers import UserSerializer
 from rest_framework.permissions import AllowAny  # ✅ Add this line
@@ -176,13 +176,15 @@ class AdminLoginView(GenericAPIView):  # ✅ Change from APIView to GenericAPIVi
 
 ### **🔹 Admin Content Management (Paginated)**
 class AdminContentViewSet(viewsets.ViewSet):
+    """
+    This viewset provides separate endpoints to list Exercises (actually blocks),
+    list Meals, or list all content, each with pagination.
+    """
     permission_classes = [IsAdminUser]
     pagination_class = AdminPageNumberPagination
 
-
-
     def get_queryset(self, content_type):
-        if content_type == "blocks":
+        if content_type == "blocks":   # or "exercises" if you prefer the name
             return ExerciseBlock.objects.all()
         elif content_type == "meals":
             return Meal.objects.all()
@@ -193,34 +195,65 @@ class AdminContentViewSet(viewsets.ViewSet):
             return list(chain(blocks, meals))  # or blocks + meals
         return ExerciseBlock.objects.none()
 
+    @swagger_auto_schema(
+        operation_description="List all exercise blocks (paginated).",
+        responses={200: openapi.Response(description="Success")}
+    )
     @action(detail=False, methods=['get'], url_path='exercises')
     def list_exercises(self, request):
+        """
+        If your code calls them 'blocks' but the URL is 'exercises', you can rename accordingly.
+        We'll just show how to list them using a list serializer.
+        """
         queryset = self.get_queryset("blocks")
         paginator = self.pagination_class()
-        paginated_queryset = paginator.paginate_queryset(queryset, request)
-        serializer = NestedExerciseSerializer(paginated_queryset, many=True)
+        paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = ExerciseBlockListSerializer(paginated_queryset, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="List all meals (paginated).",
+        responses={200: openapi.Response(description="Success")}
+    )
     @action(detail=False, methods=['get'], url_path='meals')
     def list_meals(self, request):
         queryset = self.get_queryset("meals")
         paginator = self.pagination_class()
-        paginated_queryset = paginator.paginate_queryset(queryset, request)
-        serializer = MealNestedSerializer(paginated_queryset, many=True)
+        paginated_queryset = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = MealListSerializer(paginated_queryset, many=True, context={'request': request})
         return paginator.get_paginated_response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="List both exercise blocks and meals (paginated separately).",
+        responses={200: openapi.Response(description="Success")}
+    )
     @action(detail=False, methods=['get'], url_path='all')
     def list_all_content(self, request):
-        queryset_exercises = Exercise.objects.all()
-        queryset_meals = Meal.objects.all()
+        """
+        We'll paginate them separately if you want.
+        Or you can combine them in a single list,
+        but then you'll need a single universal serializer or custom logic.
+        """
+        # Example: separate pagination for blocks vs. meals
+        blocks = ExerciseBlock.objects.all()
+        meals = Meal.objects.all()
+
         paginator = self.pagination_class()
 
-        paginated_exercises = paginator.paginate_queryset(queryset_exercises, request)
-        paginated_meals = paginator.paginate_queryset(queryset_meals, request)
+        paginated_blocks = paginator.paginate_queryset(blocks, request, view=self)
+        blocks_data = ExerciseBlockListSerializer(paginated_blocks, many=True, context={'request': request}).data
 
+        # Careful: calling paginate_queryset again for 'meals'
+        # might reuse the same pagination state.
+        # Usually you'd do separate endpoints or custom logic.
+        # We'll just do a custom merge approach for demonstration.
+
+        paginated_meals = paginator.paginate_queryset(meals, request, view=self)
+        meals_data = MealListSerializer(paginated_meals, many=True, context={'request': request}).data
+
+        # Combine them in one response if desired
         response_data = {
-            "exercises": NestedExerciseSerializer(paginated_exercises, many=True).data,
-            "meals": MealNestedSerializer(paginated_meals, many=True).data
+            "blocks": blocks_data,
+            "meals": meals_data
         }
-
-        return paginator.get_paginated_response(response_data)
+        return Response(response_data, status=status.HTTP_200_OK)
