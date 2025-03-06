@@ -13,7 +13,7 @@ from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 import json
 
-from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram
+from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram, UserSubscription
 from food.serializers import *
 
 
