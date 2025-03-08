@@ -149,7 +149,7 @@ STATICFILES_DIRS = [
 ]
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = '/root/projects/TrainerTest/media/'
+MEDIA_ROOT = '/root/projects/TrainerTest/OwnTrainer/media/'
 
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
