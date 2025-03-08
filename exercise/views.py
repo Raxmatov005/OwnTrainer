@@ -473,16 +473,17 @@ class CompleteBlockView(APIView):
         if not block_id or not isinstance(block_id, int):
             return Response({"error": _("Valid block_id is required.")}, status=400)
         block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
-        from users_app.models import UserProgram
-        user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
-        if not request.user.is_staff:
-            if not user_program or not user_program.is_subscription_active():
-                return Response({"error": _("Your subscription has ended. Please renew.")}, status=403)
+
         bc, created = block.completions.get_or_create(user=request.user)
         if bc.is_completed:
-            return Response({"message": _("Block already completed.")}, status=200)
+            return Response({
+                "message": _("Block already completed."),
+                "block_time": block.block_time,
+                "calories_burned": block.calories_burned
+            }, status=200)
         bc.is_completed = True
         bc.save()
+
         session = block.session
         all_blocks = session.blocks.all()
         completed_blocks = all_blocks.filter(completions__user=request.user, completions__is_completed=True)
@@ -492,8 +493,17 @@ class CompleteBlockView(APIView):
             session_completion.is_completed = True
             session_completion.completion_date = now().date()
             session_completion.save()
-            return Response({"message": _("Block completed. Session is now completed.")}, status=200)
-        return Response({"message": _("Block completed successfully.")}, status=200)
+            return Response({
+                "message": _("Block completed. Session is now completed."),
+                "block_time": block.block_time,
+                "calories_burned": block.calories_burned
+            }, status=200)
+
+        return Response({
+            "message": _("Block completed successfully."),
+            "block_time": block.block_time,
+            "calories_burned": block.calories_burned
+        }, status=200)
 
 
 class UserProgramViewSet(viewsets.ModelViewSet):

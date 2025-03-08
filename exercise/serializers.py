@@ -45,26 +45,6 @@ class ProgramSerializer(serializers.ModelSerializer):
         return data
 
 
-# class NestedExerciseSerializer(serializers.ModelSerializer):
-#     """
-#     Includes `image` so each exercise can have its own image.
-#     """
-#     image = serializers.ImageField(required=False, allow_null=True)
-#
-#     class Meta:
-#         model = Exercise
-#         fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image']
-#         read_only_fields = ['id', 'sequence_number']
-#
-#     def to_representation(self, instance):
-#         data = super().to_representation(instance)
-#         language = self.context.get('language', 'en')
-#         data['name'] = translate_field(instance, 'name', language)
-#         data['description'] = translate_field(instance, 'description', language)
-#         return data
-
-
-
 
 class SessionPKSerializer(serializers.ModelSerializer):
     # Instead of nested data, use primary key references.

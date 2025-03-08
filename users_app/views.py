@@ -600,7 +600,7 @@ class ProgramLanguageView22(APIView):
         user = request.user
         language = user.language
 
-        user_programs = UserProgram.objects.filter(user=user, is_active=True, is_paid=True)  # Only show paid
+        user_programs = UserProgram.objects.filter(user=user, is_active=True)  # Only show paid
         programs = [user_program.program for user_program in user_programs]
 
         serializer = ProgramSerializer(programs, many=True, context={'request': request})
@@ -660,7 +660,7 @@ class SetReminderTimeView(APIView):
             return Response({"error": "No time provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            formatted_time = datetime.strptime(reminder_time, "%H:MM").time()
+            formatted_time = datetime.strptime(reminder_time, "%H:%M").time()
             request.user.reminder_time = formatted_time
             request.user.save()
 

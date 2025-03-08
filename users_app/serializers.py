@@ -248,8 +248,9 @@ class ProgramSerializer(serializers.ModelSerializer):
         fields = ['id', 'goal', 'frequency_per_week', 'total_sessions']
 
     def get_goal(self, obj):
-        language = self.context['request'].user.language
-        return getattr(obj, f'program_goal_{language}')
+        request = self.context.get('request')
+        language = getattr(request.user, 'language', 'en') if request else 'en'
+        return getattr(obj, f'program_goal_{language}', obj.program_goal)
 
 
 class LanguageUpdateSerializer(serializers.Serializer):

@@ -111,7 +111,7 @@ class MealStepListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        language = self.context.get("language", "en")
+        language = self.context.get("language") or (self.context.get("request").user.language if self.context.get("request") else "en")
         data['title'] = translate_field(instance, 'title', language)
         return data
 
@@ -125,7 +125,7 @@ class MealStepDetailSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        language = self.context.get("language", "en")
+        language = self.context.get("language") or (self.context.get("request").user.language if self.context.get("request") else "en")
         data['title'] = translate_field(instance, 'title', language)
         data['text'] = translate_field(instance, 'text', language)
         return data
@@ -163,11 +163,13 @@ class MealListSerializer(serializers.ModelSerializer):
 
     def get_steps(self, obj):
         steps = obj.steps.all()
-        language = self.context.get("language", "en")
+        language = self.context.get("language") or (self.context.get("request").user.language if self.context.get("request") else "en")
         return [
             {
                 "id": s.id,
                 "title": translate_field(s, 'title', language),
+                "text": translate_field(s, 'text', language),  # Added field
+                "step_time": s.step_time,  # Added field
                 "step_number": s.step_number
             }
             for s in steps
@@ -175,7 +177,7 @@ class MealListSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        language = self.context.get("language", "en")
+        language = self.context.get("language") or (self.context.get("request").user.language if self.context.get("request") else "en")
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
@@ -213,7 +215,9 @@ class MealDetailSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        language = self.context.get("language", "en")
+        language = self.context.get("language") or (
+            self.context.get("request").user.language if self.context.get("request") else "en")
+
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)

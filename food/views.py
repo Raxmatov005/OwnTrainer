@@ -202,9 +202,12 @@ class CompleteMealView(APIView):
         meal_completion.is_completed = True
         meal_completion.completion_date = now().date()
         meal_completion.save()
+
         return Response({
             "message": _("Meal completed successfully."),
-            "meal_completion": MealCompletionSerializer(meal_completion).data
+            "meal_completion": MealCompletionSerializer(meal_completion).data,
+            "preparation_time": meal.preparation_time,
+            "calories": meal.calories
         }, status=status.HTTP_200_OK)
 
 class UserDailyMealsView(APIView):
