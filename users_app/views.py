@@ -6,12 +6,8 @@ from users_app.models import (User, Notification, Program, UserProgram, MealComp
 
 from .models import Notification
 from django.core.exceptions import ValidationError as DjangoValidationError
-from users_app.serializers import (
-    InitialRegisterSerializer, VerifyCodeSerializer, LoginSerializer,
-    ForgotPasswordSerializer, ResetPasswordSerializer,
-    ProgramSerializer, LanguageUpdateSerializer,
-    UserPaymentSerializer, UserProfileSerializer, CompleteProfileSerializer, UserProfileUpdateSerializer
-	)
+from users_app.serializers import *
+from exercises.serializers import ProgramSerializer, UserProgramSerializer, MealCompletionSerializer, SessionCompletionSerializer
 from django.core.validators import EmailValidator
 import random
 import logging
