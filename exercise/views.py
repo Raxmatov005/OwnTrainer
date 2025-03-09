@@ -530,7 +530,7 @@ class CompleteBlockView(APIView):
             bc.save()
 
             # Because there's only one block, completing it => completing the session
-            session_completion, _ = SessionCompletion.objects.get_or_create(
+            session_completion, sc_created = SessionCompletion.objects.get_or_create(
                 user=request.user,
                 session=session
             )
