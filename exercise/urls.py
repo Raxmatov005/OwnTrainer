@@ -18,7 +18,7 @@ router.register(r'userprogram', UserProgramViewSet, basename='userprogram')
 
 urlpatterns = [
     path('api/', include(router.urls)),
-    path('api/sessions/complete-block/', CompleteBlockView.as_view(), name='complete-block'),
+    path("api/block-complete/", CompleteBlockView.as_view(), name="complete-block"),
     path('api/user/statistics/', ProgressView.as_view(), name='user-progress'),
 ]
 
