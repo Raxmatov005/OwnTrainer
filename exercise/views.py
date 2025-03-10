@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from users_app.models import *
 from exercise.serializers import *
 from django.utils.translation import gettext_lazy as _
-from drf_yasg.utils import swagger_auto_schema
+from drf_yasg.utils import swagger_auto_schema, no_body
 from exercise.permissions import IsAdminOrReadOnly
 from users_app.models import translate_text, SessionCompletion, ExerciseBlock
 from rest_framework.views import APIView
@@ -288,10 +288,10 @@ class SessionViewSet(viewsets.ModelViewSet):
         @swagger_auto_schema(
             tags=['Sessions'],
             operation_description=_("Reset the last completed session for the user"),
-            request_body=None,  # No request body
+            request_body=no_body,  # No request body
             responses={200: "The last completed session has been reset successfully."}
         )
-        @action(detail=False, methods=['post'], url_path='reset-last-session')
+        @action(detail=False, methods=['post'], url_path='reset-last-session', permission_classes=[IsAuthenticated])
         def reset_last_session(self, request):
             """
             1. Find the last completed `SessionCompletion` (based on `completion_date`).
