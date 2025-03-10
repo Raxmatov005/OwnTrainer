@@ -275,22 +275,17 @@ class ExerciseDetailSerializer(serializers.ModelSerializer):
         return data
 
 
-class ExerciseCreateUpdateSerializer(serializers.ModelSerializer):
-    """
-    JSON-based create/update.
-    No `image` field here. We upload or replace the image in a separate endpoint.
-    """
+
+
+
+class ExerciseCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description']
+        fields = ['name', 'sequence_number', 'exercise_time', 'description']
         read_only_fields = ['sequence_number']
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get('request')
-        # Remove the 'id' field on creation so that it doesn't appear in the UI
-        if request and request.method.lower() == 'post':
-            self.fields.pop('id', None)
+
+
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -298,6 +293,26 @@ class ExerciseCreateUpdateSerializer(serializers.ModelSerializer):
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
         return data
+
+
+class ExerciseUpdateSerializer(serializers.ModelSerializer):
+    # Explicitly allow 'id' so we can identify existing exercises
+    id = serializers.IntegerField(required=True)
+
+    class Meta:
+        model = Exercise
+        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description']
+        read_only_fields = ['sequence_number']
+
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        language = self.context.get('language', 'en')
+        data['name'] = translate_field(instance, 'name', language)
+        data['description'] = translate_field(instance, 'description', language)
+        return data
+
+
 
 
 class ExerciseBlockListSerializer(serializers.ModelSerializer):
@@ -378,14 +393,48 @@ class ExerciseBlockDetailSerializer(serializers.ModelSerializer):
         return data
 
 
-class ExerciseBlockCreateUpdateSerializer(serializers.ModelSerializer):
-    """
-    JSON-based create/update for an ExerciseBlock.
-    No 'block_image' or nested 'image' here.
-    We'll do nested exercises in JSON only, excluding image field.
-    """
-    # For nested creation: use the simpler "ExerciseCreateUpdateSerializer"
-    exercises = ExerciseCreateUpdateSerializer(many=True, required=False)
+
+
+
+
+class ExerciseBlockCreateSerializer(serializers.ModelSerializer):
+    exercises = ExerciseCreateSerializer(many=True, required=False)
+
+    class Meta:
+        model = ExerciseBlock
+        fields = [
+            'block_name',
+            'block_kkal',
+            'block_water_amount',
+            'description',
+            'video_url',
+            'block_time',
+            'calories_burned',
+            'exercises',
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        language = self.context.get('language', 'en')
+        data['block_name'] = translate_field(instance, 'block_name', language)
+        data['description'] = translate_field(instance, 'description', language)
+        return data
+
+
+
+
+    def create(self, validated_data):
+        exercises_data = validated_data.pop('exercises', [])
+        block = ExerciseBlock.objects.create(**validated_data)
+        for idx, ex_data in enumerate(exercises_data, start=1):
+            ex_data['sequence_number'] = idx
+            exercise = Exercise.objects.create(**ex_data)
+            block.exercises.add(exercise)
+        return block
+
+
+class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
+    exercises = ExerciseUpdateSerializer(many=True, required=False)
 
     class Meta:
         model = ExerciseBlock
@@ -398,9 +447,10 @@ class ExerciseBlockCreateUpdateSerializer(serializers.ModelSerializer):
             'video_url',
             'block_time',
             'calories_burned',
-            'exercises'
+            'exercises',
         ]
         read_only_fields = ['id']
+
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -409,14 +459,8 @@ class ExerciseBlockCreateUpdateSerializer(serializers.ModelSerializer):
         data['description'] = translate_field(instance, 'description', language)
         return data
 
-    def create(self, validated_data):
-        exercises_data = validated_data.pop('exercises', [])
-        block = ExerciseBlock.objects.create(**validated_data)
-        for idx, ex_data in enumerate(exercises_data, start=1):
-            ex_data['sequence_number'] = idx
-            exercise = Exercise.objects.create(**ex_data)
-            block.exercises.add(exercise)
-        return block
+
+
 
     def update(self, instance, validated_data):
         exercises_data = validated_data.pop('exercises', None)
