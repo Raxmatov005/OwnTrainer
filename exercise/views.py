@@ -419,8 +419,10 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        language = self.request.query_params.get('lang', 'en')
-        context['language'] = language
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
         return context
 
     @swagger_auto_schema(
