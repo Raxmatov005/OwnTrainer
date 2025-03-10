@@ -7,6 +7,10 @@ from django.utils import timezone
 from django.utils.timezone import now
 from datetime import timedelta
 
+
+
+
+
 translator = Translator()
 
 
@@ -22,6 +26,10 @@ def translate_text(text, target_language):
 
 def default_notification_preferences():
     return {"email": False, "push_notification": True, "reminder_enabled": True}
+
+
+
+
 
 
 class CustomUserManager(BaseUserManager):
@@ -438,19 +446,7 @@ class ExerciseBlockCompletion(models.Model):
 
 
 
-from django.db import models
-from django.utils.translation import gettext_lazy as _
-from googletrans import Translator
-from django.utils import timezone
 
-translator = Translator()
-
-def translate_text(text, target_language):
-    try:
-        translation = translator.translate(text, dest=target_language)
-        return translation.text if translation else text
-    except Exception:
-        return text
 
 class Meal(models.Model):
     """

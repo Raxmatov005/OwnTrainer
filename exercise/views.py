@@ -417,6 +417,12 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
         return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        language = self.request.query_params.get('lang', 'en')
+        context['language'] = language
+        return context
+
     @swagger_auto_schema(
         operation_description="List ExerciseBlocks",
         responses={200: ExerciseBlockListSerializer(many=True)}
