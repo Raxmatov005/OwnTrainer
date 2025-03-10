@@ -293,7 +293,12 @@ class SessionViewSet(viewsets.ModelViewSet):
         )
         @action(detail=False, methods=['post'], url_path='reset-last-session')
         def reset_last_session(self, request):
-            from users_app.models import SessionCompletion
+            """
+            1. Find the last completed `SessionCompletion` (based on `completion_date`).
+            2. Mark it (and its block and meals) as not completed.
+            3. Return a success response.
+            """
+            from users_app.models import SessionCompletion, ExerciseBlockCompletion, MealCompletion
 
             # 1. Find the session that is 'is_completed=True' with the latest completion_date
             last_completed_sc = SessionCompletion.objects.filter(
@@ -305,10 +310,22 @@ class SessionViewSet(viewsets.ModelViewSet):
             if not last_completed_sc:
                 return Response({"error": _("No recently completed session found.")}, status=404)
 
-            # 3. Reset that session
+            # 3a. Reset the session
             last_completed_sc.is_completed = False
             last_completed_sc.completion_date = None
             last_completed_sc.save()
+
+            # 3b. Reset the block completion (if any)
+            ExerciseBlockCompletion.objects.filter(
+                user=request.user,
+                block__session=last_completed_sc.session
+            ).update(is_completed=False, completion_date=None)
+
+            # 3c. Reset the meal completions for that session
+            MealCompletion.objects.filter(
+                user=request.user,
+                session=last_completed_sc.session
+            ).update(is_completed=False, completion_date=None, missed=False)
 
             return Response({"message": _("The last completed session has been reset successfully.")}, status=200)
 
