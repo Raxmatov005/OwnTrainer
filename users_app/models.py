@@ -377,8 +377,8 @@ class ExerciseBlock(models.Model):
     description_en = models.TextField(blank=True, null=True)
 
     video_url = models.URLField(blank=True, null=True)
-    block_time = models.IntegerField(
-        blank=True, null=True, help_text="Estimated total time (minutes)"
+    block_time = models.DurationField(
+        blank=True, null=True, help_text="Estimated total time (e.g. HH:MM:SS)"
     )
     calories_burned = models.DecimalField(max_digits=5, decimal_places=2, default=0.00,
                                           help_text="Total calories burned in this block")
