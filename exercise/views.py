@@ -35,8 +35,10 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
         def get_serializer_context(self):
             context = super().get_serializer_context()
-            language = self.request.query_params.get('lang', 'en')
-            context['language'] = language
+            if self.request.user.is_authenticated:
+                context['language'] = self.request.user.language
+            else:
+                context['language'] = self.request.query_params.get('lang', 'en')
             return context
 
         def get_queryset(self):
@@ -142,8 +144,10 @@ class SessionViewSet(viewsets.ModelViewSet):
 
         def get_serializer_context(self):
             context = super().get_serializer_context()
-            language = self.request.query_params.get('lang', 'en')
-            context['language'] = language
+            if self.request.user.is_authenticated:
+                context['language'] = self.request.user.language
+            else:
+                context['language'] = self.request.query_params.get('lang', 'en')
             return context
 
         @swagger_auto_schema(
@@ -556,6 +560,15 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [JSONParser]
 
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
+        return context
+
     def get_serializer_class(self):
         if self.action == 'list':
             return ExerciseListSerializer
@@ -627,8 +640,13 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         serializer_class = UserProgramSerializer
         permission_classes = [IsAuthenticated]
 
-        def get_user_language(self):
-            return getattr(self.request.user, 'language', 'en')
+        def get_serializer_context(self):
+            context = super().get_serializer_context()
+            if self.request.user.is_authenticated:
+                context['language'] = self.request.user.language
+            else:
+                context['language'] = self.request.query_params.get('lang', 'en')
+            return context
 
         def get_queryset(self):
             if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:

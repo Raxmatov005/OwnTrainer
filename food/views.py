@@ -57,6 +57,16 @@ class MealViewSet(viewsets.ModelViewSet):
             return MealCreateUpdateSerializer
         return MealListSerializer
 
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
+        return context
+
+
     # If you want staff-only creation
     def create(self, request, *args, **kwargs):
         if not request.user.is_staff:
@@ -135,8 +145,10 @@ class MealStepViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context['language'] = self.request.query_params.get('lang', 'en')
-        context['request'] = self.request
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
         return context
 
     def get_queryset(self):
@@ -156,8 +168,12 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
         return MealCompletion.objects.filter(user=self.request.user)
 
     def get_serializer_context(self):
-        language = self.request.query_params.get('lang', 'en')
-        return {**super().get_serializer_context(), "language": language}
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
+        return context
 
 class CompleteMealView(APIView):
     permission_classes = [IsAuthenticated]
@@ -214,6 +230,16 @@ class UserDailyMealsView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
 
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
+        return context
+
+
     @swagger_auto_schema(
         tags=['Meals'],
         operation_description=_("Retrieve all meals assigned to the user for today."),
@@ -244,6 +270,16 @@ class UserDailyMealsView(APIView):
 class MealDetailView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
+
+
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.user.is_authenticated:
+            context['language'] = self.request.user.language
+        else:
+            context['language'] = self.request.query_params.get('lang', 'en')
+        return context
 
     @swagger_auto_schema(
         tags=['Meals'],
