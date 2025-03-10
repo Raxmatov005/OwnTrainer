@@ -30,8 +30,8 @@ services:
     container_name: owntrainer_web
     volumes:
       - .:/app
-      - ./media:/root/projects/TrainerTest/OwnTrainer/media
-      - ./static:/root/projects/TrainerTest/OwnTrainer/static
+      - ./media:/root/projects/TrainerTest/OwnTrainer/media/
+      - ./static:/root/projects/TrainerTest/OwnTrainer/static/
     ports:
       - "8000:8000"
     depends_on:
