@@ -334,19 +334,14 @@ class Exercise(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        if not self.name_uz:
-            self.name_uz = translate_text(self.name, 'uz')
-        if not self.name_ru:
-            self.name_ru = translate_text(self.name, 'ru')
-        if not self.name_en:
-            self.name_en = translate_text(self.name, 'en')
+        # Always update translation fields, or add a condition comparing new and old values
+        self.name_uz = translate_text(self.name, 'uz')
+        self.name_ru = translate_text(self.name, 'ru')
+        self.name_en = translate_text(self.name, 'en')
 
-        if not self.description_uz:
-            self.description_uz = translate_text(self.description, 'uz')
-        if not self.description_ru:
-            self.description_ru = translate_text(self.description, 'ru')
-        if not self.description_en:
-            self.description_en = translate_text(self.description, 'en')
+        self.description_uz = translate_text(self.description, 'uz')
+        self.description_ru = translate_text(self.description, 'ru')
+        self.description_en = translate_text(self.description, 'en')
 
         super(Exercise, self).save(*args, **kwargs)
 
