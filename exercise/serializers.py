@@ -283,7 +283,14 @@ class ExerciseCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
         fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description']
-        read_only_fields = ['id', 'sequence_number']
+        read_only_fields = ['sequence_number']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        # Remove the 'id' field on creation so that it doesn't appear in the UI
+        if request and request.method.lower() == 'post':
+            self.fields.pop('id', None)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
