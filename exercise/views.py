@@ -288,47 +288,55 @@ class SessionViewSet(viewsets.ModelViewSet):
         @swagger_auto_schema(
             tags=['Sessions'],
             operation_description=_("Reset the last completed session for the user"),
-            request_body=no_body,  # No request body
+            request_body=no_body,  # No body in Swagger
             responses={200: "The last completed session has been reset successfully."}
         )
-        @action(detail=False, methods=['post'], url_path='reset-last-session', permission_classes=[IsAuthenticated])
+        @action(
+            detail=False,
+            methods=['post'],
+            url_path='reset-last-session',
+            permission_classes=[IsAuthenticated]
+        )
         def reset_last_session(self, request):
             """
-            1. Find the last completed `SessionCompletion` (based on `completion_date`).
-            2. Mark it (and its block and meals) as not completed.
-            3. Return a success response.
+            1. Find the last completed SessionCompletion for this user
+            2. Reset that session, its single block, and any meals to "not completed"
+            3. Return success
             """
             from users_app.models import SessionCompletion, ExerciseBlockCompletion, MealCompletion
 
-            # 1. Find the session that is 'is_completed=True' with the latest completion_date
+            # 1. Last completed SessionCompletion
             last_completed_sc = SessionCompletion.objects.filter(
                 user=request.user,
                 is_completed=True
             ).order_by('-completion_date').first()
 
-            # 2. If not found, return 404
             if not last_completed_sc:
                 return Response({"error": _("No recently completed session found.")}, status=404)
 
-            # 3a. Reset the session
+            # 2a. Reset the session
             last_completed_sc.is_completed = False
             last_completed_sc.completion_date = None
             last_completed_sc.save()
 
-            # 3b. Reset the block completion (if any)
-            ExerciseBlockCompletion.objects.filter(
+            # 2b. Reset the single block for that session (if it exists)
+            block_comp = ExerciseBlockCompletion.objects.filter(
                 user=request.user,
                 block__session=last_completed_sc.session
-            ).update(is_completed=False, completion_date=None)
+            ).first()
+            if block_comp:
+                block_comp.is_completed = False
+                block_comp.completion_date = None
+                block_comp.save()
 
-            # 3c. Reset the meal completions for that session
+            # 2c. Reset meal completions (a bulk update is fine if no custom save logic needed)
             MealCompletion.objects.filter(
                 user=request.user,
                 session=last_completed_sc.session
             ).update(is_completed=False, completion_date=None, missed=False)
 
+            # 3. Done
             return Response({"message": _("The last completed session has been reset successfully.")}, status=200)
-
 
 class ExerciseBlockViewSet(viewsets.ModelViewSet):
         """
