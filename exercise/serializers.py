@@ -297,11 +297,10 @@ class ExerciseCreateSerializer(serializers.ModelSerializer):
 
 class ExerciseUpdateSerializer(serializers.ModelSerializer):
     # Explicitly allow 'id' so we can identify existing exercises
-    id = serializers.IntegerField(required=True)
 
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description']
+        fields = ['name', 'sequence_number', 'exercise_time', 'description']
         read_only_fields = ['sequence_number']
 
 
