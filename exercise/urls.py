@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from exercise.views import (ProgramViewSet, SessionViewSet,
                             ExerciseViewSet,UserProgramViewSet,
-                            ProgressView,CompleteBlockView,
+                            CompleteBlockView,StatisticsView,
                             ExerciseBlockViewSet)
 
 from django.conf import settings
