@@ -484,12 +484,14 @@ class Meal(models.Model):
     video_url = models.URLField(max_length=500, blank=True, null=True)
 
     def save(self, *args, **kwargs):
-        if self.description and not self.description_uz:
+        if self.description:
             self.description_uz = translate_text(self.description, 'uz')
-        if self.description and not self.description_ru:
             self.description_ru = translate_text(self.description, 'ru')
-        if self.description and not self.description_en:
             self.description_en = translate_text(self.description, 'en')
+        else:
+            self.description_uz = ''
+            self.description_ru = ''
+            self.description_en = ''
         super(Meal, self).save(*args, **kwargs)
 
     def __str__(self):
@@ -554,18 +556,27 @@ class MealSteps(models.Model):
         if not self.pk:
             last_step = MealSteps.objects.filter(meal=self.meal).order_by('step_number').last()
             self.step_number = (last_step.step_number + 1) if last_step else 1
-        if self.title and not self.title_uz:
+
+        # Always update the title translations if a title is provided.
+        if self.title:
             self.title_uz = translate_text(self.title, 'uz')
-        if self.title and not self.title_ru:
             self.title_ru = translate_text(self.title, 'ru')
-        if self.title and not self.title_en:
             self.title_en = translate_text(self.title, 'en')
-        if self.text and not self.text_uz:
+        else:
+            self.title_uz = ''
+            self.title_ru = ''
+            self.title_en = ''
+
+        # Always update the text translations if text is provided.
+        if self.text:
             self.text_uz = translate_text(self.text, 'uz')
-        if self.text and not self.text_ru:
             self.text_ru = translate_text(self.text, 'ru')
-        if self.text and not self.text_en:
             self.text_en = translate_text(self.text, 'en')
+        else:
+            self.text_uz = ''
+            self.text_ru = ''
+            self.text_en = ''
+
         super(MealSteps, self).save(*args, **kwargs)
 
     def __str__(self):
@@ -586,12 +597,14 @@ class Notification(models.Model):
     scheduled_time = models.TimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        if not self.message_uz:
+        if self.message:
             self.message_uz = translate_text(self.message, 'uz')
-        if not self.message_ru:
             self.message_ru = translate_text(self.message, 'ru')
-        if not self.message_en:
             self.message_en = translate_text(self.message, 'en')
+        else:
+            self.message_uz = ''
+            self.message_ru = ''
+            self.message_en = ''
         super(Notification, self).save(*args, **kwargs)
 
     def __str__(self):
