@@ -389,19 +389,20 @@ class ExerciseBlock(models.Model):
     exercises = models.ManyToManyField(Exercise, related_name='blocks', blank=True)
 
     def save(self, *args, **kwargs):
-        if not self.block_name_uz:
-            self.block_name_uz = translate_text(self.block_name, 'uz')
-        if not self.block_name_ru:
-            self.block_name_ru = translate_text(self.block_name, 'ru')
-        if not self.block_name_en:
-            self.block_name_en = translate_text(self.block_name, 'en')
+        # Always update translation fields regardless of previous values
+        self.block_name_uz = translate_text(self.block_name, 'uz')
+        self.block_name_ru = translate_text(self.block_name, 'ru')
+        self.block_name_en = translate_text(self.block_name, 'en')
 
-        if self.description and not self.description_uz:
+        if self.description:
             self.description_uz = translate_text(self.description, 'uz')
-        if self.description and not self.description_ru:
             self.description_ru = translate_text(self.description, 'ru')
-        if self.description and not self.description_en:
             self.description_en = translate_text(self.description, 'en')
+        else:
+            self.description_uz = ''
+            self.description_ru = ''
+            self.description_en = ''
+
         super(ExerciseBlock, self).save(*args, **kwargs)
 
     def __str__(self):
