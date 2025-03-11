@@ -211,23 +211,7 @@
       <workItem from="1741591248433" duration="2692000" />
       <workItem from="1741596183792" duration="1298000" />
       <workItem from="1741609409786" duration="10477000" />
-      <workItem from="1741673919733" duration="1512000" />
-    </task>
-    <task id="LOCAL-00145" summary=".">
-      <option name="closed" value="true" />
-      <created>1740717353841</created>
-      <option name="number" value="00145" />
-      <option name="presentableId" value="LOCAL-00145" />
-      <option name="project" value="LOCAL" />
-      <updated>1740717353841</updated>
-    </task>
-    <task id="LOCAL-00146" summary=".">
-      <option name="closed" value="true" />
-      <created>1740834328402</created>
-      <option name="number" value="00146" />
-      <option name="presentableId" value="LOCAL-00146" />
-      <option name="project" value="LOCAL" />
-      <updated>1740834328402</updated>
+      <workItem from="1741673919733" duration="1814000" />
     </task>
     <task id="LOCAL-00147" summary=".">
       <option name="closed" value="true" />
@@ -605,7 +589,23 @@
       <option name="project" value="LOCAL" />
       <updated>1741675198420</updated>
     </task>
-    <option name="localTasksCounter" value="194" />
+    <task id="LOCAL-00194" summary=".">
+      <option name="closed" value="true" />
+      <created>1741675569560</created>
+      <option name="number" value="00194" />
+      <option name="presentableId" value="LOCAL-00194" />
+      <option name="project" value="LOCAL" />
+      <updated>1741675569560</updated>
+    </task>
+    <task id="LOCAL-00195" summary=".">
+      <option name="closed" value="true" />
+      <created>1741675739309</created>
+      <option name="number" value="00195" />
+      <option name="presentableId" value="LOCAL-00195" />
+      <option name="project" value="LOCAL" />
+      <updated>1741675739309</updated>
+    </task>
+    <option name="localTasksCounter" value="196" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

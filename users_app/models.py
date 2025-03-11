@@ -369,7 +369,7 @@ class ExerciseBlock(models.Model):
 
     block_image = models.ImageField(upload_to='exercise_block_images/', blank=True, null=True)
     block_kkal = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0.00, help_text="Approx total kkal"
+        max_digits=6, decimal_places=2, default=0.00, help_text="Approx total kkal"
     )
     block_water_amount = models.DecimalField(
         max_digits=5, decimal_places=2, default=0.00, help_text="Water amount in ml"
