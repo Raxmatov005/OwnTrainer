@@ -21,7 +21,8 @@ from django.utils import timezone
 from .subscribtion_check import IsSubscriptionActive
 
 
-
+from django.utils.timezone import now, localdate
+from django.db.models import Sum, Count
 
 
 
@@ -1046,16 +1047,6 @@ class UserFullProgramDetailView(APIView):
 
 
 
-from datetime import timedelta
-from django.utils.timezone import now, localdate
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.utils.translation import gettext_lazy as _
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-from users_app.models import SessionCompletion, MealCompletion, UserProgress
-from django.db.models import Sum, Count
 
 
 class StatisticsView(APIView):
