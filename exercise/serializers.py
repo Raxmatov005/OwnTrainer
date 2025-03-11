@@ -433,7 +433,7 @@ class ExerciseBlockCreateSerializer(serializers.ModelSerializer):
 
 
 class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
-    exercises = ExerciseUpdateSerializer(many=True, required=False)
+
 
     class Meta:
         model = ExerciseBlock
@@ -446,9 +446,8 @@ class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
             'video_url',
             'block_time',
             'calories_burned',
-            'exercises',
         ]
-        read_only_fields = ['id', 'exercises']
+        read_only_fields = ['id']
 
 
     def to_representation(self, instance):
@@ -456,6 +455,9 @@ class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
         language = self.context.get('language', 'en')
         data['block_name'] = translate_field(instance, 'block_name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['exercises'] = ExerciseDetailSerializer(
+            instance.exercises.all(), many=True, context=self.context
+        ).data
         return data
 
 
