@@ -448,7 +448,7 @@ class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
             'calories_burned',
             'exercises',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'exercises']
 
 
     def to_representation(self, instance):
