@@ -908,220 +908,32 @@ class UserFullProgramDetailView(APIView):
             return meal_completion.is_completed if meal_completion else False
 
 
-# class ProgressView(APIView):
-#         permission_classes = [IsAuthenticated]
-#
-#         @swagger_auto_schema(
-#             request_body=openapi.Schema(
-#                 type=openapi.TYPE_OBJECT,
-#                 properties={
-#                     "type": openapi.Schema(
-#                         type=openapi.TYPE_STRING,
-#                         enum=["daily", "weekly", "monthly"],
-#                         description="Progress type (daily, weekly, or monthly)"
-#                     ),
-#                     "date": openapi.Schema(
-#                         type=openapi.TYPE_STRING,
-#                         format="date",
-#                         description="Date for the progress query (format: YYYY-MM-DD)"
-#                     ),
-#                 },
-#                 required=["type", "date"],
-#             ),
-#             responses={
-#                 200: openapi.Response(
-#                     description="Progress response",
-#                     examples={
-#                         "application/json": {
-#                             "date": "2024-11-23",
-#                             "completed_sessions_count": 2,
-#                             "missed_sessions_count": 1,
-#                             "total_calories_burned": 350.5,
-#                             "completed_meals_count": 3,
-#                             "missed_meals_count": 0,
-#                             "calories_gained": 1200.0,
-#                             "sessions": [
-#                                 {"id": 1, "calories_burned": 200.5, "status": "completed"},
-#                                 {"id": 2, "calories_burned": 150.0, "status": "completed"},
-#                                 {"id": 3, "calories_burned": 0.0, "status": "missed"}
-#                             ],
-#                             "meals": [
-#                                 {"id": 1, "calories": 500.0, "status": "completed"},
-#                                 {"id": 2, "calories": 700.0, "status": "completed"},
-#                                 {"id": 3, "calories": 0.0, "status": "missed"}
-#                             ]
-#                         }
-#                     },
-#                 ),
-#                 400: "Invalid request",
-#                 404: "No active program",
-#             },
-#         )
-#         def post(self, request):
-#             query_type = request.data.get("type")
-#             date_str = request.data.get("date")
-#
-#             # ✅ Validate the `type`
-#             if query_type not in ["daily", "weekly", "monthly"]:
-#                 return Response({"error": _("Invalid type. Expected 'daily', 'weekly', or 'monthly'.")}, status=400)
-#
-#             # ✅ Validate and parse the date
-#             date = parse_date(date_str)
-#             if not date:
-#                 return Response({"error": _("Invalid date format. Expected 'YYYY-MM-DD'.")}, status=400)
-#
-#             # ✅ Determine progress type
-#             if query_type == "daily":
-#                 progress = self.calculate_daily_progress(request.user, date)
-#             elif query_type == "weekly":
-#                 progress = self.calculate_weekly_progress(request.user, date)
-#             else:
-#                 progress = self.calculate_monthly_progress(request.user, date)
-#
-#             return Response(progress, status=200)
-#
-#         def calculate_daily_progress(self, user, date):
-#             completed_sessions = SessionCompletion.objects.filter(user=user, session_date=date).select_related("session__block")
-#             completed_meals = MealCompletion.objects.filter(user=user, meal_date=date).select_related("meal")
-#
-#             sessions = [
-#                 {
-#                     "id": session.session.id,
-#                     "calories_burned": float(session.session.block.calories_burned) if session.is_completed and session.session.block else 0.0,
-#                     "status": "completed" if session.is_completed else "missed"
-#                 }
-#                 for session in completed_sessions
-#             ]
-#
-#             meals = [
-#                 {
-#                     "id": meal.meal.id,
-#                     "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-#                     "status": "completed" if meal.is_completed else "missed"
-#                 }
-#                 for meal in completed_meals
-#             ]
-#
-#             return self._generate_summary(date, sessions, meals)
-#
-#         def calculate_weekly_progress(self, user, date):
-#             week_start = date - timedelta(days=date.weekday())
-#             week_end = week_start + timedelta(days=6)
-#
-#             completed_sessions = SessionCompletion.objects.filter(
-#                 user=user, session_date__range=(week_start, week_end)
-#             ).select_related("session__block")
-#
-#             completed_meals = MealCompletion.objects.filter(
-#                 user=user, meal_date__range=(week_start, week_end)
-#             ).select_related("meal")
-#
-#             sessions = [
-#                 {
-#                     "id": session.session.id,
-#                     "calories_burned": float(session.session.block.calories_burned) if session.is_completed and session.session.block else 0.0,
-#                     "status": "completed" if session.is_completed else "missed"
-#                 }
-#                 for session in completed_sessions
-#             ]
-#
-#             meals = [
-#                 {
-#                     "id": meal.meal.id,
-#                     "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-#                     "status": "completed" if meal.is_completed else "missed"
-#                 }
-#                 for meal in completed_meals
-#             ]
-#
-#             return self._generate_summary(week_start, sessions, meals, week_end=week_end)
-#
-#         def calculate_monthly_progress(self, user, date):
-#             month_start = date.replace(day=1)
-#             next_month = month_start.replace(day=28) + timedelta(days=4)
-#             month_end = next_month - timedelta(days=next_month.day)
-#
-#             completed_sessions = SessionCompletion.objects.filter(
-#                 user=user, session_date__range=(month_start, month_end)
-#             ).select_related("session__block")
-#
-#             completed_meals = MealCompletion.objects.filter(
-#                 user=user, meal_date__range=(month_start, month_end)
-#             ).select_related("meal")
-#
-#             sessions = [
-#                 {
-#                     "id": session.session.id,
-#                     "calories_burned": float(session.session.block.calories_burned) if session.is_completed and session.session.block else 0.0,
-#                     "status": "completed" if session.is_completed else "missed"
-#                 }
-#                 for session in completed_sessions
-#             ]
-#
-#             meals = [
-#                 {
-#                     "id": meal.meal.id,
-#                     "calories": float(meal.meal.calories) if meal.is_completed else 0.0,
-#                     "status": "completed" if meal.is_completed else "missed"
-#                 }
-#                 for meal in completed_meals
-#             ]
-#
-#             return self._generate_summary(month_start, sessions, meals, month_end=month_end)
-#
-#         def _generate_summary(self, start_date, sessions, meals, week_end=None, month_end=None):
-#             """
-#             ✅ Generates a summarized progress report.
-#             """
-#             summary = {
-#                 "date": str(start_date),
-#                 "completed_sessions_count": sum(1 for s in sessions if s["status"] == "completed"),
-#                 "missed_sessions_count": sum(1 for s in sessions if s["status"] == "missed"),
-#                 "total_calories_burned": sum(s["calories_burned"] for s in sessions),
-#                 "completed_meals_count": sum(1 for m in meals if m["status"] == "completed"),
-#                 "missed_meals_count": sum(1 for m in meals if m["status"] == "missed"),
-#                 "calories_gained": sum(m["calories"] for m in meals),
-#                 "sessions": sessions,
-#                 "meals": meals,
-#             }
-#
-#             # ✅ Add week or month end date for better clarity
-#             if week_end:
-#                 summary["week_end_date"] = str(week_end)
-#             if month_end:
-#                 summary["month_end_date"] = str(month_end)
-#
-#             return summary
-
-
-
 
 
 
 class StatisticsView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # Uncomment and adjust if you want Swagger docs:
-    # @swagger_auto_schema(
-    #     operation_description="Returns daily, weekly, or monthly statistics in a specific JSON format.",
-    #     request_body=openapi.Schema(
-    #         type=openapi.TYPE_OBJECT,
-    #         properties={
-    #             "type": openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 enum=["daily", "weekly", "monthly"],
-    #                 description="Choose a time range: daily, weekly, or monthly"
-    #             ),
-    #             "date": openapi.Schema(
-    #                 type=openapi.TYPE_STRING,
-    #                 format="date",
-    #                 description="Specify a date (format: YYYY-MM-DD)"
-    #             ),
-    #         },
-    #         required=["type", "date"],
-    #     ),
-    #     responses={200: "Success", 400: "Invalid request"},
-    # )
+    @swagger_auto_schema(
+        operation_description="Returns daily, weekly, or monthly statistics in a specific JSON format.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "type": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    enum=["daily", "weekly", "monthly"],
+                    description="Choose a time range: daily, weekly, or monthly"
+                ),
+                "date": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format="date",
+                    description="Specify a date (format: YYYY-MM-DD)"
+                ),
+            },
+            required=["type", "date"],
+        ),
+        responses={200: "Success", 400: "Invalid request"},
+    )
     def post(self, request):
         query_type = request.data.get("type")  # "daily", "weekly", or "monthly"
         date_str = request.data.get("date")    # "YYYY-MM-DD"
