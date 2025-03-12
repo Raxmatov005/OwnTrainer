@@ -27,6 +27,9 @@ from django.db.models import Sum, Count
 
 
 
+
+
+
     # ProgramViewSet
 class ProgramViewSet(viewsets.ModelViewSet):
         queryset = Program.objects.all()
@@ -582,59 +585,104 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         return ExerciseListSerializer
 
 
+
+
+def maybe_mark_session_completed(user, session):
+    """
+    Marks the session as completed if:
+      1) The session's block is completed by this user.
+      2) All meals in the session are completed by this user.
+    """
+    from users_app.models import ExerciseBlockCompletion, SessionCompletion
+    from food.models import MealCompletion
+
+    # 1) Check if block is completed
+    block_completed = ExerciseBlockCompletion.objects.filter(
+        user=user,
+        block=session.block,  # because session has a OneToOneField to block
+        is_completed=True
+    ).exists()
+
+    if not block_completed:
+        # If block isn't completed, session can't be completed
+        return False
+
+    # 2) Check if all meals are completed
+    #   - If the session has N meals, we need N MealCompletion records with is_completed=True
+    meal_ids = session.meals.values_list('id', flat=True)
+    total_meals = len(meal_ids)
+    completed_meals = MealCompletion.objects.filter(
+        user=user,
+        session=session,
+        meal_id__in=meal_ids,
+        is_completed=True
+    ).count()
+
+    if completed_meals < total_meals:
+        # Not all meals are completed
+        return False
+
+    # 3) If we reach here, block is completed AND all meals are completed => mark session completed
+    sc, created = SessionCompletion.objects.get_or_create(user=user, session=session)
+    sc.is_completed = True
+    sc.completion_date = timezone.now().date()
+    sc.save()
+
+    return True
+
+
 class CompleteBlockView(APIView):
-        permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
-        @swagger_auto_schema(
-            tags=['Sessions'],
-            operation_description=_("Complete the exercise block (one block per session)."),
-            request_body=openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'block_id': openapi.Schema(
-                        type=openapi.TYPE_INTEGER,
-                        description="ID of the ExerciseBlock"
-                    )
-                },
-                required=['block_id']
-            ),
-            responses={200: "Block completed successfully. Session completion checked."}
-        )
-        def post(self, request):
-            block_id = request.data.get("block_id")
-            if not block_id or not isinstance(block_id, int):
-                return Response({"error": _("Valid block_id is required.")}, status=400)
+    @swagger_auto_schema(
+        tags=['Sessions'],
+        operation_description=_("Complete the exercise block (one block per session)."),
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'block_id': openapi.Schema(
+                    type=openapi.TYPE_INTEGER,
+                    description="ID of the ExerciseBlock"
+                )
+            },
+            required=['block_id']
+        ),
+        responses={200: "Block completed successfully. Session completion checked."}
+    )
+    def post(self, request):
+        block_id = request.data.get("block_id")
+        if not block_id or not isinstance(block_id, int):
+            return Response({"error": _("Valid block_id is required.")}, status=400)
 
-            # Retrieve the block & its session
-            block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
-            session = block.session  # Because it's OneToOne, there's exactly one block per session
+        block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
+        session = block.session  # OneToOne
 
-            # Mark the block as completed
-            bc, completed = block.completions.get_or_create(user=request.user)
-            if bc.is_completed:
-                return Response({
-                    "message": _("Block already completed."),
-                    "block_time": block.block_time,
-                    "calories_burned": block.calories_burned
-                }, status=200)
-
-            bc.is_completed = True
-            bc.save()
-
-            # Because there's only one block, completing it => completing the session
-            session_completion, sc_created = SessionCompletion.objects.get_or_create(
-                user=request.user,
-                session=session
-            )
-            session_completion.is_completed = True
-            session_completion.completion_date = now().date()
-            session_completion.save()
-
+        # Mark the block as completed for this user
+        bc, created = block.completions.get_or_create(user=request.user)
+        if bc.is_completed:
+            # Already completed
+            # But still check if the session can now be completed (maybe meals were just finished)
+            session_completed = maybe_mark_session_completed(request.user, session)
             return Response({
-                "message": _("Block completed. Session is now completed."),
+                "message": _("Block already completed."),
                 "block_time": block.block_time,
-                "calories_burned": block.calories_burned
+                "calories_burned": block.calories_burned,
+                "session_completed": session_completed
             }, status=200)
+
+        bc.is_completed = True
+        bc.completion_date = timezone.now().date()
+        bc.save()
+
+        # Now check if we can mark the session completed
+        session_completed = maybe_mark_session_completed(request.user, session)
+
+        return Response({
+            "message": _("Block completed."),
+            "block_time": block.block_time,
+            "calories_burned": block.calories_burned,
+            "session_completed": session_completed
+        }, status=200)
 
 class UserProgramViewSet(viewsets.ModelViewSet):
         queryset = UserProgram.objects.select_related('program').all()
@@ -1049,148 +1097,160 @@ class UserFullProgramDetailView(APIView):
 
 
 
+
 class StatisticsView(APIView):
-    """
-    ✅ Retrieves user progress statistics for a specific time period: daily, weekly, or monthly.
-    """
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        tags=['Statistics'],
-        operation_description=_("Retrieve user statistics for a given time period."),
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                "type": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=["daily", "weekly", "monthly"],
-                    description="Choose a time range: daily, weekly, or monthly"
-                ),
-                "date": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    format="date",
-                    description="Specify a date (format: YYYY-MM-DD)"
-                ),
-            },
-            required=["type", "date"],
-        ),
-        responses={
-            200: openapi.Response(
-                description="User statistics successfully retrieved.",
-                examples={
-                    "application/json": {
-                        "date": "2025-03-10",
-                        "completed_sessions": 3,
-                        "missed_sessions": 1,
-                        "total_calories_burned": 450.0,
-                        "completed_meals": 4,
-                        "missed_meals": 2,
-                        "total_calories_gained": 1200.0
-                    }
-                }
-            ),
-            400: "Invalid request",
-            404: "No data available for the given date",
-        },
-    )
+    # Uncomment and adjust if you want Swagger docs:
+    # @swagger_auto_schema(
+    #     operation_description="Returns daily, weekly, or monthly statistics in a specific JSON format.",
+    #     request_body=openapi.Schema(
+    #         type=openapi.TYPE_OBJECT,
+    #         properties={
+    #             "type": openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 enum=["daily", "weekly", "monthly"],
+    #                 description="Choose a time range: daily, weekly, or monthly"
+    #             ),
+    #             "date": openapi.Schema(
+    #                 type=openapi.TYPE_STRING,
+    #                 format="date",
+    #                 description="Specify a date (format: YYYY-MM-DD)"
+    #             ),
+    #         },
+    #         required=["type", "date"],
+    #     ),
+    #     responses={200: "Success", 400: "Invalid request"},
+    # )
     def post(self, request):
-        query_type = request.data.get("type")
-        date_str = request.data.get("date")
+        query_type = request.data.get("type")  # "daily", "weekly", or "monthly"
+        date_str = request.data.get("date")    # "YYYY-MM-DD"
 
+        # Validate query_type
         if query_type not in ["daily", "weekly", "monthly"]:
-            return Response({"error": _("Invalid type. Use 'daily', 'weekly', or 'monthly'.")}, status=400)
+            return Response({"error": "Invalid type. Use 'daily', 'weekly', or 'monthly'."}, status=400)
 
-        date = localdate() if date_str is None else localdate().fromisoformat(date_str)
+        # Parse date
+        try:
+            date = localdate().fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
 
+        # Dispatch to the correct function
         if query_type == "daily":
-            statistics = self.calculate_daily_statistics(request.user, date)
+            result = self.get_daily_data(request.user, date)
         elif query_type == "weekly":
-            statistics = self.calculate_weekly_statistics(request.user, date)
+            result = self.get_weekly_data(request.user, date)
+        else:  # "monthly"
+            result = self.get_monthly_data(request.user, date)
+
+        return Response(result, status=200)
+
+    def get_daily_data(self, user, date):
+        """
+        Return a dict with one key (the date) -> { total_calories_burned, calories_gained, session_complete }.
+        Example:
+        {
+          "2025-03-01": {
+            "total_calories_burned": 0,
+            "calories_gained": 165,
+            "session_complete": true
+          }
+        }
+        """
+        data_for_day = self._get_day_info(user, date, include_calories=True)
+        return {
+            str(date): data_for_day
+        }
+
+    def get_weekly_data(self, user, date):
+        """
+        Return a dict with 7 keys (one for each day of the week).
+        Example:
+        {
+          "2025-03-01": { ... },
+          "2025-03-02": { ... },
+          ...
+        }
+        """
+        # Calculate start (Monday) and end (Sunday) of that week
+        start_date = date - timedelta(days=date.weekday())  # Monday
+        end_date = start_date + timedelta(days=6)           # Sunday
+
+        result = {}
+        current = start_date
+        while current <= end_date:
+            data_for_day = self._get_day_info(user, current, include_calories=True)
+            result[str(current)] = data_for_day
+            current += timedelta(days=1)
+
+        return result
+
+    def get_monthly_data(self, user, date):
+        """
+        Return a dict with one key per day in that month,
+        only showing { "session_complete": True/False } for each date.
+        Example:
+        {
+          "2025-03-01": { "session_complete": true },
+          "2025-03-02": { "session_complete": false },
+          ...
+        }
+        """
+        # First day of the month
+        start_date = date.replace(day=1)
+
+        # Compute last day of the month
+        next_month = (start_date.replace(day=28) + timedelta(days=4))
+        last_day = (next_month - timedelta(days=next_month.day)).day
+        end_date = start_date.replace(day=last_day)
+
+        result = {}
+        current = start_date
+        while current <= end_date:
+            # We only want session_complete for monthly
+            day_info = self._get_day_info(user, current, include_calories=False)
+            result[str(current)] = {
+                "session_complete": day_info["session_complete"]
+            }
+            current += timedelta(days=1)
+
+        return result
+
+    def _get_day_info(self, user, date, include_calories=False):
+        """
+        Helper that returns a dict with:
+        - session_complete (bool)
+        - total_calories_burned (float) [if include_calories=True]
+        - calories_gained (float) [if include_calories=True]
+        """
+        # Query all SessionCompletions for the given user and date
+        sessions_this_day = SessionCompletion.objects.filter(
+            user=user, session_date=date
+        )
+        # Decide how to define session_complete. Here, "True" if
+        # *every* session on that day is completed, otherwise False:
+        if sessions_this_day.exists():
+            session_complete = all(s.is_completed for s in sessions_this_day)
         else:
-            statistics = self.calculate_monthly_statistics(request.user, date)
+            session_complete = False
 
-        return Response(statistics, status=200)
-
-    def calculate_daily_statistics(self, user, date):
-        completed_sessions = SessionCompletion.objects.filter(
-            user=user, completion_date=date, is_completed=True
-        ).count()
-
-        missed_sessions = SessionCompletion.objects.filter(
-            user=user, session_date=date, is_completed=False
-        ).count()
-
-        completed_meals = MealCompletion.objects.filter(
-            user=user, completion_date=date, is_completed=True
-        ).count()
-
-        missed_meals = MealCompletion.objects.filter(
-            user=user, meal_date=date, is_completed=False
-        ).count()
-
-        total_calories_burned = SessionCompletion.objects.filter(
-            user=user, completion_date=date, is_completed=True
-        ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
-
-        total_calories_gained = MealCompletion.objects.filter(
-            user=user, completion_date=date, is_completed=True
-        ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
-
-        return {
-            "date": str(date),
-            "completed_sessions": completed_sessions,
-            "missed_sessions": missed_sessions,
-            "total_calories_burned": float(total_calories_burned),
-            "completed_meals": completed_meals,
-            "missed_meals": missed_meals,
-            "total_calories_gained": float(total_calories_gained),
+        day_info = {
+            "session_complete": session_complete
         }
 
-    def calculate_weekly_statistics(self, user, date):
-        week_start = date - timedelta(days=date.weekday())
-        week_end = week_start + timedelta(days=6)
+        if include_calories:
+            # total_calories_burned
+            total_burned = SessionCompletion.objects.filter(
+                user=user, completion_date=date, is_completed=True
+            ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
 
-        return self.aggregate_statistics(user, week_start, week_end, "weekly")
+            # total_calories_gained
+            total_gained = MealCompletion.objects.filter(
+                user=user, completion_date=date, is_completed=True
+            ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
 
-    def calculate_monthly_statistics(self, user, date):
-        month_start = date.replace(day=1)
-        next_month = month_start.replace(day=28) + timedelta(days=4)
-        month_end = next_month - timedelta(days=next_month.day)
+            day_info["total_calories_burned"] = float(total_burned)
+            day_info["calories_gained"] = float(total_gained)
 
-        return self.aggregate_statistics(user, month_start, month_end, "monthly")
-
-    def aggregate_statistics(self, user, start_date, end_date, period):
-        completed_sessions = SessionCompletion.objects.filter(
-            user=user, completion_date__range=(start_date, end_date), is_completed=True
-        ).count()
-
-        missed_sessions = SessionCompletion.objects.filter(
-            user=user, session_date__range=(start_date, end_date), is_completed=False
-        ).count()
-
-        completed_meals = MealCompletion.objects.filter(
-            user=user, completion_date__range=(start_date, end_date), is_completed=True
-        ).count()
-
-        missed_meals = MealCompletion.objects.filter(
-            user=user, meal_date__range=(start_date, end_date), is_completed=False
-        ).count()
-
-        total_calories_burned = SessionCompletion.objects.filter(
-            user=user, completion_date__range=(start_date, end_date), is_completed=True
-        ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
-
-        total_calories_gained = MealCompletion.objects.filter(
-            user=user, completion_date__range=(start_date, end_date), is_completed=True
-        ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
-
-        return {
-            f"{period}_start_date": str(start_date),
-            f"{period}_end_date": str(end_date),
-            "completed_sessions": completed_sessions,
-            "missed_sessions": missed_sessions,
-            "total_calories_burned": float(total_calories_burned),
-            "completed_meals": completed_meals,
-            "missed_meals": missed_meals,
-            "total_calories_gained": float(total_calories_gained),
-        }
+        return day_info
