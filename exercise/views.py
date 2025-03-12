@@ -548,15 +548,14 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         method='patch',
-        operation_description="Upload or replace an Exercise's image (admins only).",
+        operation_description="Upload or replace an Exercise's image (admins only). Only the image field will be updated.",
         consumes=['multipart/form-data'],
         manual_parameters=[
-            # No need for exercise_id in the path, because pk identifies the exercise
             openapi.Parameter(
                 name='image',
                 in_=openapi.IN_FORM,
                 type=openapi.TYPE_FILE,
-                description="New image file"
+                description="New exercise image file"
             )
         ],
         responses={200: "Exercise image updated"}
@@ -571,16 +570,19 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Get the Exercise instance directly
+        # Retrieve the Exercise instance directly using the pk
         exercise = self.get_object()
 
+        # Only update the image field; ignore any other data in the request.
         file_obj = request.FILES.get('image')
         if not file_obj:
             return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
         exercise.image = file_obj
         exercise.save()
+
         return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
+
 
 def maybe_mark_session_completed(user, session):
     """
@@ -588,8 +590,8 @@ def maybe_mark_session_completed(user, session):
       1) The session's block is completed by this user.
       2) All meals in the session are completed by this user.
     """
-    from users_app.models import ExerciseBlockCompletion, SessionCompletion
-    from food.models import MealCompletion
+
+
 
     # 1) Check if block is completed
     block_completed = ExerciseBlockCompletion.objects.filter(
