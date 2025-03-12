@@ -551,12 +551,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         operation_description="Upload or replace an Exercise's image (admins only).",
         consumes=['multipart/form-data'],
         manual_parameters=[
-            openapi.Parameter(
-                name='exercise_id',
-                in_=openapi.IN_PATH,
-                type=openapi.TYPE_INTEGER,
-                description="ID of the Exercise"
-            ),
+            # No need for exercise_id in the path, because pk identifies the exercise
             openapi.Parameter(
                 name='image',
                 in_=openapi.IN_FORM,
@@ -566,17 +561,18 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         ],
         responses={200: "Exercise image updated"}
     )
-    @action(detail=True, methods=['patch'], url_path='upload-exercise-image/(?P<exercise_id>\d+)',
-            parser_classes=[MultiPartParser, FormParser])
-    def upload_exercise_image(self, request, pk=None, exercise_id=None):
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='upload-image',
+        parser_classes=[MultiPartParser, FormParser]
+    )
+    def upload_image(self, request, pk=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
-        block = self.get_object()
-        try:
-            exercise = block.exercises.get(id=exercise_id)
-        except Exercise.DoesNotExist:
-            return Response({"detail": "Exercise not found in this block."}, status=status.HTTP_404_NOT_FOUND)
+        # Get the Exercise instance directly
+        exercise = self.get_object()
 
         file_obj = request.FILES.get('image')
         if not file_obj:
@@ -585,7 +581,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         exercise.image = file_obj
         exercise.save()
         return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
-
 
 def maybe_mark_session_completed(user, session):
     """
