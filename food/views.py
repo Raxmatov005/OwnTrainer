@@ -109,30 +109,19 @@ class MealViewSet(viewsets.ModelViewSet):
         method='patch',
         operation_description="Upload or replace the Meal's food_photo (admins only).",
         consumes=['multipart/form-data'],
-        manual_parameters=[
-            openapi.Parameter(
-                name='food_photo',
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="The new meal photo"
-            )
-        ],
+        request_body=MealImageUploadSerializer,
         responses={200: "Meal photo updated"}
     )
     @action(detail=True, methods=['patch'], url_path='upload-photo', parser_classes=[MultiPartParser, FormParser])
     def upload_photo(self, request, pk=None):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
-
         meal = self.get_object()
-        file_obj = request.FILES.get('food_photo', None)
-        if not file_obj:
-            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
-
-        meal.food_photo = file_obj
-        meal.save()
-        return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
-
+        serializer = MealImageUploadSerializer(meal, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """

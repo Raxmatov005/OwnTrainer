@@ -566,14 +566,6 @@ class ExerciseViewSet(viewsets.ModelViewSet):
 
 
 def maybe_mark_session_completed(user, session):
-    """
-    Marks the session as completed if:
-      1) The session's block is completed by this user.
-      2) All meals in the session are completed by this user.
-    """
-
-
-
     # 1) Check if block is completed
     block_completed = ExerciseBlockCompletion.objects.filter(
         user=user,
@@ -582,11 +574,9 @@ def maybe_mark_session_completed(user, session):
     ).exists()
 
     if not block_completed:
-        # If block isn't completed, session can't be completed
         return False
 
     # 2) Check if all meals are completed
-    #   - If the session has N meals, we need N MealCompletion records with is_completed=True
     meal_ids = session.meals.values_list('id', flat=True)
     total_meals = len(meal_ids)
     completed_meals = MealCompletion.objects.filter(
@@ -597,16 +587,20 @@ def maybe_mark_session_completed(user, session):
     ).count()
 
     if completed_meals < total_meals:
-        # Not all meals are completed
         return False
 
-    # 3) If we reach here, block is completed AND all meals are completed => mark session completed
-    sc, created = SessionCompletion.objects.get_or_create(user=user, session=session)
+    # 3) If both block and meals are completed, mark session as completed.
+    sc, created = SessionCompletion.objects.get_or_create(
+        user=user,
+        session=session,
+        defaults={'session_number_private': session.session_number}  # Provide default value here
+    )
     sc.is_completed = True
     sc.completion_date = timezone.now().date()
     sc.save()
 
     return True
+
 
 
 class CompleteBlockView(APIView):
