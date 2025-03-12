@@ -486,3 +486,29 @@ class ExerciseBlockUpdateSerializer(serializers.ModelSerializer):
                     instance.exercises.add(new_exercise)
 
         return instance
+
+
+
+class ExerciseImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Exercise
+        fields = ['image']
+        extra_kwargs = {
+            'image': {
+                'required': True,
+                'error_messages': {'required': 'Image file is required.'}
+            }
+        }
+
+
+
+class ExerciseBlockImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExerciseBlock
+        fields = ['block_image']
+        extra_kwargs = {
+            'block_image': {
+                'required': True,
+                'error_messages': {'required': 'Block image is required.'}
+            }
+        }

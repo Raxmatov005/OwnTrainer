@@ -489,14 +489,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         method='patch',
         operation_description="Upload or replace block_image (admins only).",
         consumes=['multipart/form-data'],
-        manual_parameters=[
-            openapi.Parameter(
-                name='block_image',
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="Upload block image"
-            )
-        ],
+        request_body=ExerciseBlockImageUploadSerializer,
         responses={200: "Block image uploaded"}
     )
     @action(detail=True, methods=['patch'], url_path='upload-block-image', parser_classes=[MultiPartParser, FormParser])
@@ -505,13 +498,11 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
         block = self.get_object()
-        file_obj = request.FILES.get('block_image')
-        if not file_obj:
-            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
-
-        block.block_image = file_obj
-        block.save()
-        return Response({"message": "Block image uploaded."}, status=status.HTTP_200_OK)
+        serializer = ExerciseBlockImageUploadSerializer(block, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Block image uploaded."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     # -----------
     # Upload an Exercise's image (unchanged)
@@ -550,14 +541,7 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         method='patch',
         operation_description="Upload or replace an Exercise's image (admins only). Only the image field will be updated.",
         consumes=['multipart/form-data'],
-        manual_parameters=[
-            openapi.Parameter(
-                name='image',
-                in_=openapi.IN_FORM,
-                type=openapi.TYPE_FILE,
-                description="New exercise image file"
-            )
-        ],
+        request_body=ExerciseImageUploadSerializer,
         responses={200: "Exercise image updated"}
     )
     @action(
@@ -570,18 +554,15 @@ class ExerciseViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Retrieve the Exercise instance directly using the pk
+        # Retrieve the Exercise instance using the pk provided in the URL.
         exercise = self.get_object()
 
-        # Only update the image field; ignore any other data in the request.
-        file_obj = request.FILES.get('image')
-        if not file_obj:
-            return Response({"detail": "No file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
-
-        exercise.image = file_obj
-        exercise.save()
-
-        return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
+        # Validate only the image field using the dedicated serializer.
+        serializer = ExerciseImageUploadSerializer(exercise, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Exercise image updated."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 def maybe_mark_session_completed(user, session):
