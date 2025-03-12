@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment="." />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -216,15 +214,7 @@
       <workItem from="1741673919733" duration="2767000" />
       <workItem from="1741702259515" duration="1877000" />
       <workItem from="1741760415189" duration="4850000" />
-      <workItem from="1741778714190" duration="912000" />
-    </task>
-    <task id="LOCAL-00156" summary=".">
-      <option name="closed" value="true" />
-      <created>1740847610334</created>
-      <option name="number" value="00156" />
-      <option name="presentableId" value="LOCAL-00156" />
-      <option name="project" value="LOCAL" />
-      <updated>1740847610334</updated>
+      <workItem from="1741778714190" duration="1632000" />
     </task>
     <task id="LOCAL-00157" summary=".">
       <option name="closed" value="true" />
@@ -610,7 +600,15 @@
       <option name="project" value="LOCAL" />
       <updated>1741771252221</updated>
     </task>
-    <option name="localTasksCounter" value="205" />
+    <task id="LOCAL-00205" summary=".">
+      <option name="closed" value="true" />
+      <created>1741779734226</created>
+      <option name="number" value="00205" />
+      <option name="presentableId" value="LOCAL-00205" />
+      <option name="project" value="LOCAL" />
+      <updated>1741779734226</updated>
+    </task>
+    <option name="localTasksCounter" value="206" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

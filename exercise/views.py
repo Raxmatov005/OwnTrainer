@@ -1008,18 +1008,10 @@ class StatisticsView(APIView):
         return result
 
     def _get_day_info(self, user, date, include_calories=False):
-        """
-        Helper that returns a dict with:
-        - session_complete (bool)
-        - total_calories_burned (float) [if include_calories=True]
-        - calories_gained (float) [if include_calories=True]
-        """
-        # Query all SessionCompletions for the given user and date
+        # Incorrect filtering by session_date
         sessions_this_day = SessionCompletion.objects.filter(
             user=user, session_date=date
         )
-        # Decide how to define session_complete. Here, "True" if
-        # *every* session on that day is completed, otherwise False:
         if sessions_this_day.exists():
             session_complete = all(s.is_completed for s in sessions_this_day)
         else:
@@ -1030,12 +1022,10 @@ class StatisticsView(APIView):
         }
 
         if include_calories:
-            # total_calories_burned
             total_burned = SessionCompletion.objects.filter(
                 user=user, completion_date=date, is_completed=True
             ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
 
-            # total_calories_gained
             total_gained = MealCompletion.objects.filter(
                 user=user, completion_date=date, is_completed=True
             ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
