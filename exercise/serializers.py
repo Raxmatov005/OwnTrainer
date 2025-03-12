@@ -516,13 +516,3 @@ class ExerciseBlockImageUploadSerializer(serializers.ModelSerializer):
 
 # serializers.py
 
-class MealImageUploadSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Meal
-        fields = ['food_photo']
-        extra_kwargs = {
-            'food_photo': {
-                'required': True,
-                'error_messages': {'required': 'Food photo is required.'}
-            }
-        }

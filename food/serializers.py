@@ -283,3 +283,16 @@ class MealCompletionSerializer(serializers.ModelSerializer):
 class CompleteMealSerializer(serializers.Serializer):
     session_id = serializers.IntegerField(required=True)
     meal_id = serializers.IntegerField(required=True)
+
+
+
+class MealImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Meal
+        fields = ['food_photo']
+        extra_kwargs = {
+            'food_photo': {
+                'required': True,
+                'error_messages': {'required': 'Food photo is required.'}
+            }
+        }
