@@ -16,6 +16,16 @@ import json
 from users_app.models import Meal, MealSteps, MealCompletion, SessionCompletion, Session, UserProgram, UserSubscription
 from food.serializers import *
 
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from rest_framework.decorators import action
+from drf_yasg.utils import swagger_auto_schema
+from django.utils import timezone
+from rest_framework.permissions import IsAuthenticated
+
+# Import your serializers
+
 
 class MealViewSet(viewsets.ModelViewSet):
     """
@@ -53,10 +63,11 @@ class MealViewSet(viewsets.ModelViewSet):
             return MealListSerializer
         elif self.action == 'retrieve':
             return MealDetailSerializer
-        elif self.action in ['create', 'update', 'partial_update']:
-            return MealCreateUpdateSerializer
+        elif self.action == 'create':
+            return MealCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return MealUpdateSerializer
         return MealListSerializer
-
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -65,7 +76,6 @@ class MealViewSet(viewsets.ModelViewSet):
         else:
             context['language'] = self.request.query_params.get('lang', 'en')
         return context
-
 
     # If you want staff-only creation
     def create(self, request, *args, **kwargs):

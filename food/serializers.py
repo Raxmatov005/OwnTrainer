@@ -143,6 +143,65 @@ class MealDetailSerializer(serializers.ModelSerializer):
 
 # food/serializers.py
 
+
+
+class MealCompletionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MealCompletion
+        fields = ['id', 'meal', 'session', 'is_completed', 'completion_date', 'meal_time']
+
+class CompleteMealSerializer(serializers.Serializer):
+    session_id = serializers.IntegerField(required=True)
+    meal_id = serializers.IntegerField(required=True)
+
+
+
+class MealImageUploadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Meal
+        fields = ['food_photo']
+        extra_kwargs = {
+            'food_photo': {
+                'required': True,
+                'error_messages': {'required': 'Food photo is required.'}
+            }
+        }
+
+
+
+# class MealCreateUpdateSerializer(serializers.ModelSerializer):
+#     """
+#     JSON-only create/update for Meal. 'food_photo' excluded.
+#     We'll handle steps in a separate endpoint (MealStepViewSet).
+#     """
+#     class Meta:
+#         model = Meal
+#         fields = [
+#             'id',
+#             'meal_type',
+#             'food_name',
+#             'calories',
+#             'water_content',
+#             'preparation_time',
+#             'description',
+#             'video_url',
+#         ]
+#         read_only_fields = ['id']
+#
+#     def create(self, validated_data):
+#         # Just create the Meal itself
+#         meal = Meal.objects.create(**validated_data)
+#         return meal
+#
+#     def update(self, instance, validated_data):
+#         # Update Meal fields only
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+#         return instance
+
+
+
 class MealCreateUpdateSerializer(serializers.ModelSerializer):
     """
     JSON-only create/update for Meal. 'food_photo' excluded.
@@ -174,24 +233,57 @@ class MealCreateUpdateSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-class MealCompletionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MealCompletion
-        fields = ['id', 'meal', 'session', 'is_completed', 'completion_date', 'meal_time']
-
-class CompleteMealSerializer(serializers.Serializer):
-    session_id = serializers.IntegerField(required=True)
-    meal_id = serializers.IntegerField(required=True)
 
 
+class MealUpdateSerializer(serializers.ModelSerializer):
+    # Include nested steps for update
+    steps = MealStepDetailSerializer(many=True, required=False)
 
-class MealImageUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Meal
-        fields = ['food_photo']
-        extra_kwargs = {
-            'food_photo': {
-                'required': True,
-                'error_messages': {'required': 'Food photo is required.'}
-            }
-        }
+        fields = [
+            'id',
+            'meal_type',
+            'food_name',
+            'calories',
+            'water_content',
+            'preparation_time',
+            'description',
+            'video_url',
+            'steps'
+        ]
+        read_only_fields = ['id']
+
+    def update(self, instance, validated_data):
+        steps_data = validated_data.pop('steps', None)
+        # Update Meal fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if steps_data is not None:
+            # Create a dictionary of existing steps keyed by their ID
+            existing_steps = {step.id: step for step in instance.steps.all()}
+            handled_ids = []
+
+            # Process each provided step
+            for step_dict in steps_data:
+                step_id = step_dict.get('id', None)
+                if step_id and step_id in existing_steps:
+                    # Update the existing step
+                    step_instance = existing_steps[step_id]
+                    for field, val in step_dict.items():
+                        setattr(step_instance, field, val)
+                    step_instance.save()
+                    handled_ids.append(step_id)
+                else:
+                    # Create a new step if no valid ID is provided
+                    new_step = MealSteps.objects.create(meal=instance, **step_dict)
+                    handled_ids.append(new_step.id)
+
+            # Optionally delete steps that were not provided in the update payload
+            for existing_id, step_obj in existing_steps.items():
+                if existing_id not in handled_ids:
+                    step_obj.delete()
+
+        return instance
