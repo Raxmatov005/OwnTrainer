@@ -27,6 +27,24 @@ from rest_framework.permissions import IsAuthenticated
 # Import your serializers
 
 
+# food/views.py
+
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+
+from users_app.models import Meal, UserProgram, UserSubscription
+from .serializers import (
+    MealListSerializer,
+    MealDetailSerializer,
+    MealCreateSerializer,
+    MealUpdateSerializer,
+    MealImageUploadSerializer
+)
+
 class MealViewSet(viewsets.ModelViewSet):
     """
     JSON-only create/update for Meal, plus a separate endpoint for 'food_photo'.
@@ -50,13 +68,15 @@ class MealViewSet(viewsets.ModelViewSet):
         has_active_subscription = UserSubscription.objects.filter(
             user=user,
             is_active=True,
-            end_date__gte=user_program.end_date  # or timezone.now() if you prefer
+            end_date__gte=user_program.end_date
         ).exists()
 
         if not has_active_subscription:
             return Meal.objects.none()
 
-        return Meal.objects.filter(sessions__program=user_program.program).distinct().prefetch_related("steps")
+        return Meal.objects.filter(
+            sessions__program=user_program.program
+        ).distinct().prefetch_related("steps")
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -72,23 +92,37 @@ class MealViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user.is_authenticated:
-            context['language'] = self.request.user.language
+            context['language'] = getattr(self.request.user, 'language', 'en')
         else:
             context['language'] = self.request.query_params.get('lang', 'en')
         return context
 
-    # If you want staff-only creation
+    @swagger_auto_schema(request_body=MealCreateSerializer)
     def create(self, request, *args, **kwargs):
+        """
+        Staff-only creation of a Meal with optional nested MealSteps.
+        """
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().create(request, *args, **kwargs)
 
+    @swagger_auto_schema(request_body=MealUpdateSerializer)
     def update(self, request, pk=None, *args, **kwargs):
+        """
+        Staff-only full update of a Meal (PUT).
+        Replaces nested MealSteps if provided.
+        """
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, pk, *args, **kwargs)
 
+    @swagger_auto_schema(request_body=MealUpdateSerializer)
     def partial_update(self, request, pk=None, *args, **kwargs):
+        """
+        Staff-only partial update of a Meal (PATCH).
+        Updates nested MealSteps if provided;
+        also deletes any steps not in the payload (mimicking full replace).
+        """
         if not request.user.is_staff:
             return Response({"detail": "Admins only"}, status=status.HTTP_403_FORBIDDEN)
         return super().partial_update(request, pk, *args, **kwargs)
@@ -112,9 +146,6 @@ class MealViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, pk=None, *args, **kwargs):
         return super().retrieve(request, pk, *args, **kwargs)
 
-    # ----------------------------
-    # Upload the meal's food_photo in a separate endpoint
-    # ----------------------------
     @swagger_auto_schema(
         method='patch',
         operation_description="Upload or replace the Meal's food_photo (admins only).",
@@ -132,6 +163,8 @@ class MealViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """
