@@ -287,3 +287,34 @@ class MealUpdateSerializer(serializers.ModelSerializer):
                     step_obj.delete()
 
         return instance
+
+
+
+class MealCreateSerializer(serializers.ModelSerializer):
+    """
+    For creating a Meal with nested MealSteps in one request.
+    """
+    steps = MealStepDetailSerializer(many=True, required=False)
+
+    class Meta:
+        model = Meal
+        fields = [
+            'id',
+            'meal_type',
+            'food_name',
+            'calories',
+            'water_content',
+            'preparation_time',
+            'description',
+            'video_url',
+            'steps',
+        ]
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        steps_data = validated_data.pop('steps', [])
+        meal = Meal.objects.create(**validated_data)
+        # Create MealSteps (if any) and link them to the Meal
+        for idx, step_dict in enumerate(steps_data, start=1):
+            MealSteps.objects.create(meal=meal, step_number=idx, **step_dict)
+        return meal
