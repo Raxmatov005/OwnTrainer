@@ -23,12 +23,13 @@ class MealStepListSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = MealSteps
-        fields = ['id', 'title', 'step_time', 'step_number']
+        fields = ['id', 'title', 'text', 'step_time', 'step_number']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         language = self.context.get("language") or (self.context.get("request").user.language if self.context.get("request") else "en")
         data['title'] = translate_field(instance, 'title', language)
+        data['text'] = translate_field(instance, 'text', language)
         return data
 
 class MealStepDetailSerializer(serializers.ModelSerializer):
