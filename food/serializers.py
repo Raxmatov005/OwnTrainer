@@ -121,6 +121,7 @@ class MealDetailSerializer(serializers.ModelSerializer):
             'steps'
         ]
 
+
     def get_food_photo_url(self, obj):
         if not obj.food_photo:
             return None
