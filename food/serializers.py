@@ -237,7 +237,6 @@ class MealCreateUpdateSerializer(serializers.ModelSerializer):
 
 class MealUpdateSerializer(serializers.ModelSerializer):
     # Include nested steps for update
-    steps = MealStepDetailSerializer(many=True, required=False)
 
     class Meta:
         model = Meal
@@ -250,7 +249,7 @@ class MealUpdateSerializer(serializers.ModelSerializer):
             'preparation_time',
             'description',
             'video_url',
-            'steps'
+
         ]
         read_only_fields = ['id']
 
