@@ -27,6 +27,19 @@ from rest_framework.permissions import IsAuthenticated
 # Import your serializers
 
 
+translator = Translator()
+
+
+def translate_text(text, target_language):
+    try:
+        translation = translator.translate(text, dest=target_language)
+        return translation.text if translation else text
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return text
+
+
+
 # food/views.py
 
 from rest_framework import viewsets, status
