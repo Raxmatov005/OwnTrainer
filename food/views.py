@@ -24,7 +24,7 @@ from drf_yasg.utils import swagger_auto_schema
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 
-# Import your serializers
+# Import your serializerskkkkkkkk
 
 
 translator = Translator()
