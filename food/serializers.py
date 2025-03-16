@@ -316,5 +316,7 @@ class MealCreateSerializer(serializers.ModelSerializer):
         meal = Meal.objects.create(**validated_data)
         # Create MealSteps (if any) and link them to the Meal
         for idx, step_dict in enumerate(steps_data, start=1):
+            # Agar step_dict da step_number mavjud bo'lsa, uni olib tashlaymiz
+            step_dict.pop('step_number', None)
             MealSteps.objects.create(meal=meal, step_number=idx, **step_dict)
         return meal
