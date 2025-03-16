@@ -78,6 +78,7 @@ class MealViewSet(viewsets.ModelViewSet):
             sessions__program=user_program.program
         ).distinct().prefetch_related("steps")
 
+
     def get_serializer_class(self):
         if self.action == 'list':
             return MealListSerializer
