@@ -23,7 +23,7 @@ from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
-
+from exercise.views import maybe_mark_session_completed
 # Import your serializerskkkkkkkk
 
 
@@ -221,6 +221,10 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
             context['language'] = self.request.query_params.get('lang', 'en')
         return context
 
+
+
+
+
 class CompleteMealView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
@@ -256,21 +260,29 @@ class CompleteMealView(APIView):
         if not user_program or not user_program.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")},
                             status=status.HTTP_403_FORBIDDEN)
-        meal_completion = MealCompletion.objects.filter(session_id=session_id, meal_id=meal_id, user=request.user).first()
+        meal_completion = MealCompletion.objects.filter(session_id=session_id, meal_id=meal_id,
+                                                        user=request.user).first()
         if not meal_completion:
             return Response({"error": _("Session and Meal combination not found.")}, status=status.HTTP_404_NOT_FOUND)
         if meal_completion.is_completed:
             return Response({"message": _("This meal has already been completed.")}, status=status.HTTP_200_OK)
+
+        # Mark the meal as completed
         meal_completion.is_completed = True
         meal_completion.completion_date = now().date()
         meal_completion.save()
+
+        # Check and mark session as completed if conditions are met
+        session_completed = maybe_mark_session_completed(request.user, session)
 
         return Response({
             "message": _("Meal completed successfully."),
             "meal_completion": MealCompletionSerializer(meal_completion).data,
             "preparation_time": meal.preparation_time,
-            "calories": meal.calories
+            "calories": meal.calories,
+            "session_completed": session_completed
         }, status=status.HTTP_200_OK)
+
 
 class UserDailyMealsView(APIView):
     permission_classes = [IsAuthenticated]

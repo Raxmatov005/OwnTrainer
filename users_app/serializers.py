@@ -265,6 +265,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'country', 'age', 'height', 'weight', 'goal', 'level',
             'is_premium', 'photo', 'language', 'date_joined', 'is_active'
         ]
+        extra_kwargs = {
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'email_or_phone': {'required': False},
+        }
 
 
 
