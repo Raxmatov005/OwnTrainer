@@ -1007,13 +1007,13 @@ class StatisticsView(APIView):
             user=user, session_date=date
         )
         if sessions_this_day.exists():
-            session_complete = all(s.is_completed for s in sessions_this_day)
+            session_complete = True
         else:
             session_complete = False
 
-        day_info = {
-            "session_complete": session_complete
-        }
+        day_info = {"session_complete": session_complete}
+
+
 
         if include_calories:
             total_burned = SessionCompletion.objects.filter(
