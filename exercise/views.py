@@ -1002,18 +1002,16 @@ class StatisticsView(APIView):
         return result
 
     def _get_day_info(self, user, date, include_calories=False):
-        # Incorrect filtering by session_date
+        # The comment “Incorrect filtering by session_date” is just leftover text;
+        # we’re actually filtering by completion_date now, which is correct.
         sessions_this_day = SessionCompletion.objects.filter(
-            user=user, session_date=date
+            user=user,
+            is_completed=True,
+            completion_date=date
         )
-        if sessions_this_day.exists():
-            session_complete = True
-        else:
-            session_complete = False
 
+        session_complete = sessions_this_day.exists()
         day_info = {"session_complete": session_complete}
-
-
 
         if include_calories:
             total_burned = SessionCompletion.objects.filter(
@@ -1028,3 +1026,4 @@ class StatisticsView(APIView):
             day_info["calories_gained"] = float(total_gained)
 
         return day_info
+

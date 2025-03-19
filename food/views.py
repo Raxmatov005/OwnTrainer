@@ -316,7 +316,7 @@ class UserDailyMealsView(APIView):
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")}, status=status.HTTP_403_FORBIDDEN)
-        user_sessions = SessionCompletion.objects.filter(user=user, session_date=today).values_list('session_id', flat=True)
+        user_sessions = SessionCompletion.objects.filter(user=user,is_completed=True, completion_date=today).values_list('session_id', flat=True)
         if not user_sessions:
             return Response({"message": _("No sessions found for today.")}, status=status.HTTP_404_NOT_FOUND)
         meals = Meal.objects.filter(sessions__id__in=user_sessions).distinct()
