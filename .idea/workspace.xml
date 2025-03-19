@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/food/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/food/views.py" afterDir="false" />
-    </list>
+    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment="." />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -41,12 +38,12 @@
     &quot;assignee&quot;: &quot;Raxmatov005&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/Raxmatov005/OwnTrainer.git",
-    "accountId": "b02bdfe4-6ed9-4769-8060-a67bb9e67409"
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Raxmatov005/OwnTrainer.git&quot;,
+    &quot;accountId&quot;: &quot;b02bdfe4-6ed9-4769-8060-a67bb9e67409&quot;
   }
-}]]></component>
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 0
 }</component>
@@ -220,15 +217,7 @@
       <workItem from="1741778714190" duration="2556000" />
       <workItem from="1741944965258" duration="2105000" />
       <workItem from="1741956376044" duration="1727000" />
-      <workItem from="1742308747501" duration="1736000" />
-    </task>
-    <task id="LOCAL-00167" summary=".">
-      <option name="closed" value="true" />
-      <created>1740900717431</created>
-      <option name="number" value="00167" />
-      <option name="presentableId" value="LOCAL-00167" />
-      <option name="project" value="LOCAL" />
-      <updated>1740900717431</updated>
+      <workItem from="1742308747501" duration="2456000" />
     </task>
     <task id="LOCAL-00168" summary=".">
       <option name="closed" value="true" />
@@ -614,7 +603,15 @@
       <option name="project" value="LOCAL" />
       <updated>1742138152819</updated>
     </task>
-    <option name="localTasksCounter" value="216" />
+    <task id="LOCAL-00216" summary=".">
+      <option name="closed" value="true" />
+      <created>1742321500846</created>
+      <option name="number" value="00216" />
+      <option name="presentableId" value="LOCAL-00216" />
+      <option name="project" value="LOCAL" />
+      <updated>1742321500846</updated>
+    </task>
+    <option name="localTasksCounter" value="217" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

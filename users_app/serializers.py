@@ -108,35 +108,41 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             'level',
             'photo',
             'language',
-            'phone_or_email_optional',  # Allow updating the optional field
+            'phone_or_email_optional',  # Make it optional in the serializer
         ]
         extra_kwargs = {
-            'first_name': {'required': False},  # Make it optional
-            'last_name': {'required': False},  # Make it optional
+            'first_name': {'required': False},
+            'last_name': {'required': False},
+            'phone_or_email_optional': {'required': False, 'allow_null': True, 'allow_blank': True},
         }
 
     def validate(self, attrs):
-        user = self.instance  # Get the current user instance
+        user = self.instance  # Current user instance
 
-        # Check if the user registered with email or phone
+        # Determine if user is registered with email or phone
         registered_with_email = '@' in user.email_or_phone
         registered_with_phone = not registered_with_email
 
-        # Check if the user is adding the missing field
-        optional_field = attrs.get('phone_or_email_optional')
+        # Get the new optional field value if provided
+        optional_field = attrs.get('phone_or_email_optional', None)
 
-        if registered_with_email:
-            if not optional_field or optional_field.isdigit() == False:
-                raise serializers.ValidationError(
-                    {"phone_or_email_optional": "You must add a valid phone number."}
-                )
-        elif registered_with_phone:
-            if not optional_field or '@' not in optional_field:
-                raise serializers.ValidationError(
-                    {"phone_or_email_optional": "You must add a valid email address."}
-                )
+        # Only validate if the optional_field has been provided
+        if optional_field:
+            if registered_with_email:
+                # User originally registered with email -> optional field should be phone if provided
+                if not optional_field.isdigit():
+                    raise serializers.ValidationError(
+                        {"phone_or_email_optional": "You must add a valid phone number."}
+                    )
+            else:
+                # User originally registered with phone -> optional field should be email if provided
+                if '@' not in optional_field:
+                    raise serializers.ValidationError(
+                        {"phone_or_email_optional": "You must add a valid email address."}
+                    )
 
         return attrs
+
 
 
 class VerifyCodeSerializer(serializers.Serializer):
