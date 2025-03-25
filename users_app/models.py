@@ -174,7 +174,7 @@ class UserSubscription(models.Model):
             self.end_date = self.start_date + timedelta(days=add_days)
 
         # Ensure subscription is not active if expired
-        if self.end_date < timezone.now().date():
+        if self.end_date and self.end_date.date() < timezone.now().date():
             self.is_active = False
 
         super(UserSubscription, self).save(*args, **kwargs)
