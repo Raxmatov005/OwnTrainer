@@ -428,25 +428,6 @@ class ExerciseBlockCompletion(models.Model):
             self.completion_date = timezone.now().date()
         super().save(*args, **kwargs)
 
-    # def mark_session_completed_if_done(self):
-    #     """
-    #     Because there's only ONE block per session,
-    #     if we complete this block => the Session is also completed.
-    #     """
-    #     if self.is_completed:
-    #         session = self.block.session
-    #         from users_app.models import SessionCompletion  # or import at top
-    #
-    #         sc, _ = SessionCompletion.objects.get_or_create(
-    #             user=self.user, session=session
-    #         )
-    #         sc.is_completed = True
-    #         sc.completion_date = timezone.now().date()
-    #         sc.save()
-
-
-
-
 
 class Meal(models.Model):
     """
