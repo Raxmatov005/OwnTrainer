@@ -81,7 +81,7 @@ services:
 
 volumes:
   postgres_data:
-    external: true
+
 
 networks:
   owntrainer_network:
