@@ -28,37 +28,41 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     Handles Payme Webhook API calls for subscription.
     """
 
+    from payme.types import response
+
     def check_perform_transaction(self, params):
-        """
-        Validates whether a transaction can be performed.
-        Payme calls this method to check if the transaction is possible
-        (e.g., if the account exists, and amounts match).
-        """
-
         try:
-            # 'fetch_account(params)' returns a 'UserProgram' instance
-            user_program = self.fetch_account(params)  # It's already a UserProgram model object
-
+            user_program = self.fetch_account(params)
             amount = int(params.get('amount'))
             expected_amount = user_program.amount
 
+            # If amount is wrong, return code -31001 with "data":"amount"
             if amount != expected_amount:
-                return response.CheckPerformTransaction(allow=False, message="Invalid payment amount").as_resp()
+                return response.CheckPerformTransaction(
+                    allow=False,
+                    reason=-31001,  # <-- important!
+                    message="Неверная сумма",
+                    data="amount"
+                ).as_resp()
 
+            # Otherwise, transaction is allowed
             return response.CheckPerformTransaction(allow=True).as_resp()
 
         except UserProgram.DoesNotExist:
-            # If 'fetch_account()' or subsequent logic fails to find a valid UserProgram
+            # If user program is invalid, return a relevant code (e.g. -31050)
             return response.CheckPerformTransaction(
                 allow=False,
-                message="Invalid user program ID"
+                reason=-31050,
+                message="Invalid user program ID",
+                data="account[id]"
             ).as_resp()
 
         except Exception as e:
-            # Any other unexpected error
+            # For other errors, you can return a generic -31008 or any relevant code
             return response.CheckPerformTransaction(
                 allow=False,
-                message=f"Error: {str(e)}"
+                reason=-31008,
+                message=str(e)
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
