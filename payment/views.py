@@ -144,7 +144,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
 
 
-
+from .utils import generate_payme_base64_url
 
 
 class UnifiedPaymentInitView(APIView):
@@ -178,10 +178,8 @@ class UnifiedPaymentInitView(APIView):
             return Response({"redirect_url": pay_url})
 
         elif payment_method == "payme":
-            payme_url = (
-                f"https://checkout.paycom.uz/{settings.PAYME_ID}"
-                f"?account[id]={user_program.id}&amount={amount * 100}"
-            )
+            # Use our helper to generate the base64-encoded Payme checkout URL.
+            payme_url = generate_payme_base64_url(amount_in_soum=amount, user_program_id=user_program.id)
             return Response({"redirect_url": payme_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)
