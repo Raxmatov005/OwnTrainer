@@ -21,7 +21,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         Validates whether a transaction can be performed.
         """
         account = self.fetch_account(params)
-        user_program_id = account.get('id')
+        user_program_id = account.id
         try:
             user_program = UserProgram.objects.get(id=user_program_id)
             amount = int(params.get('amount'))
