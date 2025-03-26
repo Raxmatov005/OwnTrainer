@@ -144,7 +144,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
 
 
-from .utils import generate_payme_base64_url
+from .utils import generate_payme_docs_style_url
 
 
 class UnifiedPaymentInitView(APIView):
@@ -174,12 +174,18 @@ class UnifiedPaymentInitView(APIView):
 
         if payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
-            pay_url = PyClick.generate_url(order_id=subscription.id, amount=str(amount), return_url=return_url)
+            pay_url = PyClick.generate_url(
+                order_id=subscription.id,
+                amount=str(amount),
+                return_url=return_url
+            )
             return Response({"redirect_url": pay_url})
 
         elif payment_method == "payme":
-            # Use our helper to generate the base64-encoded Payme checkout URL.
-            payme_url = generate_payme_base64_url(amount_in_soum=amount, user_program_id=user_program.id)
+            payme_url = generate_payme_docs_style_url(
+                subscription_type=subscription_type,
+                user_program_id=user_program.id
+            )
             return Response({"redirect_url": payme_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)
