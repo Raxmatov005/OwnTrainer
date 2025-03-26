@@ -27,22 +27,39 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     """
     Handles Payme Webhook API calls for subscription.
     """
+
     def check_perform_transaction(self, params):
         """
         Validates whether a transaction can be performed.
+        Payme calls this method to check if the transaction is possible
+        (e.g., if the account exists, and amounts match).
         """
-        account = self.fetch_account(params)
-        user_program_id = account.id
+
         try:
-            user_program = UserProgram.objects.get(id=user_program_id)
+            # 'fetch_account(params)' returns a 'UserProgram' instance
+            user_program = self.fetch_account(params)  # It's already a UserProgram model object
+
             amount = int(params.get('amount'))
-            # Ensure the amount matches the expected subscription cost
             expected_amount = user_program.amount
+
             if amount != expected_amount:
                 return response.CheckPerformTransaction(allow=False, message="Invalid payment amount").as_resp()
+
             return response.CheckPerformTransaction(allow=True).as_resp()
+
         except UserProgram.DoesNotExist:
-            return response.CheckPerformTransaction(allow=False, message="Invalid user program ID").as_resp()
+            # If 'fetch_account()' or subsequent logic fails to find a valid UserProgram
+            return response.CheckPerformTransaction(
+                allow=False,
+                message="Invalid user program ID"
+            ).as_resp()
+
+        except Exception as e:
+            # Any other unexpected error
+            return response.CheckPerformTransaction(
+                allow=False,
+                message=f"Error: {str(e)}"
+            ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         """
