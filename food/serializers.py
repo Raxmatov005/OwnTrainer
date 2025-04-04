@@ -170,36 +170,6 @@ class MealImageUploadSerializer(serializers.ModelSerializer):
 
 
 
-# class MealCreateUpdateSerializer(serializers.ModelSerializer):
-#     """
-#     JSON-only create/update for Meal. 'food_photo' excluded.
-#     We'll handle steps in a separate endpoint (MealStepViewSet).
-#     """
-#     class Meta:
-#         model = Meal
-#         fields = [
-#             'id',
-#             'meal_type',
-#             'food_name',
-#             'calories',
-#             'water_content',
-#             'preparation_time',
-#             'description',
-#             'video_url',
-#         ]
-#         read_only_fields = ['id']
-#
-#     def create(self, validated_data):
-#         # Just create the Meal itself
-#         meal = Meal.objects.create(**validated_data)
-#         return meal
-#
-#     def update(self, instance, validated_data):
-#         # Update Meal fields only
-#         for attr, value in validated_data.items():
-#             setattr(instance, attr, value)
-#         instance.save()
-#         return instance
 
 
 

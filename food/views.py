@@ -87,6 +87,7 @@ class MealViewSet(viewsets.ModelViewSet):
         if not has_active_subscription:
             return Meal.objects.none()
 
+        # This line is only reached if user_program exists and subscription is active
         return Meal.objects.filter(
             sessions__program=user_program.program
         ).distinct().prefetch_related("steps")
