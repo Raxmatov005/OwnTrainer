@@ -41,7 +41,7 @@ class ProgramSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         language = self.context.get('language', 'en')
-        data['program_goal'] = translate_field(instance, 'program_goal', language)
+        data['program_goal'] = translate_text(instance.get_program_goal_display(), language)
         return data
 
 
@@ -219,20 +219,14 @@ class EmptyQuerySerializer(serializers.Serializer):
 
 
 class ExerciseListSerializer(serializers.ModelSerializer):
-    """
-    For listing exercises.
-    No `image` field here, just a read-only URL if you want.
-    We'll rename the field to `image_url`.
-    """
     image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image_url']
+        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image_url', 'exercise_type']
         read_only_fields = ['id', 'sequence_number']
 
     def get_image_url(self, obj):
-        """Return an absolute URL if obj.image is set."""
         if not obj.image:
             return None
         request = self.context.get('request')
@@ -245,6 +239,7 @@ class ExerciseListSerializer(serializers.ModelSerializer):
         language = self.context.get('language', 'en')
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['exercise_type'] = translate_text(instance.get_exercise_type_display(), language)
         return data
 
 
@@ -256,7 +251,7 @@ class ExerciseDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image_url']
+        fields = ['id', 'name', 'sequence_number', 'exercise_time', 'description', 'image_url', 'exercise_type']
         read_only_fields = ['id', 'sequence_number']
 
     def get_image_url(self, obj):
@@ -272,6 +267,7 @@ class ExerciseDetailSerializer(serializers.ModelSerializer):
         language = self.context.get('language', 'en')
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['exercise_type'] = translate_text(instance.get_exercise_type_display(), language)
         return data
 
 
@@ -281,7 +277,7 @@ class ExerciseDetailSerializer(serializers.ModelSerializer):
 class ExerciseCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exercise
-        fields = ['name', 'sequence_number', 'exercise_time', 'description']
+        fields = ['name', 'sequence_number', 'exercise_time', 'description', 'exercise_type']
         read_only_fields = ['sequence_number']
 
 
@@ -292,6 +288,7 @@ class ExerciseCreateSerializer(serializers.ModelSerializer):
         language = self.context.get('language', 'en')
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['exercise_type'] = translate_text(instance.get_exercise_type_display(), language)
         return data
 
 
@@ -300,7 +297,7 @@ class ExerciseUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Exercise
-        fields = ['name', 'sequence_number', 'exercise_time', 'description']
+        fields = ['name', 'sequence_number', 'exercise_time', 'description', 'exercise_type']
         read_only_fields = ['sequence_number']
 
 
@@ -309,6 +306,7 @@ class ExerciseUpdateSerializer(serializers.ModelSerializer):
         language = self.context.get('language', 'en')
         data['name'] = translate_field(instance, 'name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['exercise_type'] = translate_text(instance.get_exercise_type_display(), language)
         return data
 
 

@@ -67,7 +67,8 @@ class MealListSerializer(serializers.ModelSerializer):
             'description',
             'video_url',
             'food_photo_url',
-            'steps'
+            'steps',
+            'goal_type'
         ]
 
     def get_food_photo_url(self, obj):
@@ -98,6 +99,7 @@ class MealListSerializer(serializers.ModelSerializer):
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['goal_type'] = translate_text(instance.get_goal_type_display(), language)
         return data
 
 class MealDetailSerializer(serializers.ModelSerializer):
@@ -119,7 +121,8 @@ class MealDetailSerializer(serializers.ModelSerializer):
             'description',
             'video_url',
             'food_photo_url',
-            'steps'
+            'steps',
+            'goal_type'
         ]
 
 
@@ -139,6 +142,7 @@ class MealDetailSerializer(serializers.ModelSerializer):
         data['meal_type'] = getattr(instance, f"meal_type_{language}", None) or instance.get_meal_type_display()
         data['food_name'] = translate_field(instance, 'food_name', language)
         data['description'] = translate_field(instance, 'description', language)
+        data['goal_type'] = translate_text(instance.get_goal_type_display(), language)
         return data
 
 
@@ -189,6 +193,7 @@ class MealCreateUpdateSerializer(serializers.ModelSerializer):
             'preparation_time',
             'description',
             'video_url',
+            'goal_type'
         ]
         read_only_fields = ['id']
 
@@ -220,6 +225,7 @@ class MealUpdateSerializer(serializers.ModelSerializer):
             'preparation_time',
             'description',
             'video_url',
+            'goal_type'
 
         ]
         read_only_fields = ['id']
@@ -278,6 +284,7 @@ class MealCreateSerializer(serializers.ModelSerializer):
             'description',
             'video_url',
             'steps',
+            'goal_type'
         ]
         read_only_fields = ['id']
 

@@ -87,11 +87,11 @@ class MealViewSet(viewsets.ModelViewSet):
         if not has_active_subscription:
             return Meal.objects.none()
 
-        # This line is only reached if user_program exists and subscription is active
+        # Filter meals by the program's goal (which should match the user's goal)
         return Meal.objects.filter(
-            sessions__program=user_program.program
+            sessions__program=user_program.program,
+            goal_type=user.goal  # Add this filter
         ).distinct().prefetch_related("steps")
-
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -199,10 +199,28 @@ class MealStepViewSet(viewsets.ModelViewSet):
         return context
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return MealSteps.objects.none()
+
+        user = self.request.user
+        if user.is_staff:
+            return MealSteps.objects.all()
+
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program or not user_program.is_subscription_active():
+            return MealSteps.objects.none()
+
+        # Only return steps for meals the user has access to
+        accessible_meals = Meal.objects.filter(
+            sessions__program=user_program.program,
+            goal_type=user.goal
+        ).values_list('id', flat=True)
+
         meal_id = self.request.query_params.get('meal_id')
         if meal_id:
-            return self.queryset.filter(meal_id=meal_id)
-        return self.queryset
+            return self.queryset.filter(meal_id=meal_id, meal_id__in=accessible_meals)
+        return self.queryset.filter(meal_id__in=accessible_meals)
+
 
 class MealCompletionViewSet(viewsets.ModelViewSet):
     queryset = MealCompletion.objects.all()
@@ -212,8 +230,10 @@ class MealCompletionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return MealCompletion.objects.none()
-        return MealCompletion.objects.filter(user=self.request.user)
-
+        return MealCompletion.objects.filter(
+            user=self.request.user,
+            meal__goal_type=self.request.user.goal
+        )
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.user.is_authenticated:
@@ -257,6 +277,11 @@ class CompleteMealView(APIView):
         meal = Meal.objects.filter(id=meal_id).first()
         if not meal:
             return Response({"error": _("Meal not found.")}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if the meal's goal_type matches the user's goal
+        if meal.goal_type != request.user.goal:
+            return Response({"error": _("This meal does not match your goal.")}, status=status.HTTP_400_BAD_REQUEST)
+
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
             return Response({"error": _("Your subscription has ended. Please renew.")},
@@ -316,14 +341,20 @@ class UserDailyMealsView(APIView):
         user = request.user
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():
-            return Response({"error": _("Your subscription has ended. Please renew.")}, status=status.HTTP_403_FORBIDDEN)
-        user_sessions = SessionCompletion.objects.filter(user=user,is_completed=True, completion_date=today).values_list('session_id', flat=True)
+            return Response({"error": _("Your subscription has ended. Please renew.")},
+                            status=status.HTTP_403_FORBIDDEN)
+        user_sessions = SessionCompletion.objects.filter(user=user, is_completed=True,
+                                                         completion_date=today).values_list('session_id', flat=True)
         if not user_sessions:
             return Response({"message": _("No sessions found for today.")}, status=status.HTTP_404_NOT_FOUND)
-        meals = Meal.objects.filter(sessions__id__in=user_sessions).distinct()
+        meals = Meal.objects.filter(
+            sessions__id__in=user_sessions,
+            goal_type=user.goal  # Add this filter
+        ).distinct()
         if not meals.exists():
             return Response({"message": _("No meals found for today.")}, status=status.HTTP_404_NOT_FOUND)
-        serializer = MealDetailSerializer(meals, many=True, context={"language": getattr(user, 'language', 'en'), "request": request})
+        serializer = MealDetailSerializer(meals, many=True,
+                                          context={"language": getattr(user, 'language', 'en'), "request": request})
         return Response({"meals": serializer.data}, status=status.HTTP_200_OK)
 
 class MealDetailView(APIView):
@@ -358,8 +389,19 @@ class MealDetailView(APIView):
         }
     )
     def get(self, request, meal_id):
-        meal = Meal.objects.prefetch_related('steps').filter(id=meal_id).first()
+        user = request.user
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program or not user_program.is_subscription_active():
+            return Response({"error": _("Your subscription has ended. Please renew.")},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        meal = Meal.objects.prefetch_related('steps').filter(
+            id=meal_id,
+            goal_type=user.goal,
+            sessions__program=user_program.program
+        ).first()
         if not meal:
-            return Response({"error": _("Meal not found.")}, status=status.HTTP_404_NOT_FOUND)
-        serializer = MealDetailSerializer(meal, context={"language": getattr(request.user, 'language', 'en'), "request": request})
+            return Response({"error": _("Meal not found or not accessible.")}, status=status.HTTP_404_NOT_FOUND)
+        serializer = MealDetailSerializer(meal, context={"language": getattr(request.user, 'language', 'en'),
+                                                         "request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)

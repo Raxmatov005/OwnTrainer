@@ -66,9 +66,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
-        """
-        Handles successful payments and extends the user's subscription.
-        """
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
         user_program_id = transaction.account.id
         try:
@@ -77,6 +74,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             sub_type = user_program.subscription_type
             add_days = SUBSCRIPTION_DAYS.get(sub_type, 30)
             today = timezone.now().date()
+
+            # Ensure the program's goal matches the user's goal
+            if user_program.program and user_program.program.program_goal != user.goal:
+                raise ValueError("Program goal does not match user goal")
 
             # Ensure subscription is active
             user_subscription, created = UserSubscription.objects.get_or_create(
@@ -92,6 +93,8 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             user_program.save()
         except UserProgram.DoesNotExist:
             print(f"❌ No order found with ID: {user_program_id}")
+        except ValueError as e:
+            print(f"❌ Error: {str(e)}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         """
@@ -106,43 +109,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except UserProgram.DoesNotExist:
             print(f"❌ No order found with ID: {user_program_id}")
 
-    def create_sessions_for_user(self, user, program):
-        """
-        Generates session records **only after payment is successful** using the new unified flow.
-        Creates SessionCompletion, MealCompletion, and ExerciseBlockCompletion records.
-        """
-        from users_app.models import SessionCompletion, MealCompletion, ExerciseBlockCompletion
-        sessions = program.sessions.order_by("session_number")
-        start_date = timezone.now().date()
-
-        for index, session in enumerate(sessions, start=1):
-            session_date = start_date + timedelta(days=index - 1)
-            SessionCompletion.objects.create(
-                user=user,
-                session=session,
-                is_completed=False,
-                session_number_private=session.session_number,
-                session_date=session_date,
-            )
-            for meal in session.meals.all():
-                MealCompletion.objects.create(
-                    user=user,
-                    meal=meal,
-                    session=session,
-                    is_completed=False,
-                    meal_date=session_date,
-                )
-            if hasattr(session, 'block'):
-                ExerciseBlockCompletion.objects.create(
-                    user=user,
-                    block=session.block,
-                    is_completed=False
-                )
-    # End of PaymeCallBackAPIView
-
-
-
-
 
 from .utils import generate_payme_docs_style_url
 
@@ -153,6 +119,7 @@ class UnifiedPaymentInitView(APIView):
     def post(self, request):
         payment_method = request.data.get("payment_method")
         subscription_type = request.data.get("subscription_type")
+        program_id = request.data.get("program_id")  # Require program_id in the request
 
         if subscription_type not in SUBSCRIPTION_COSTS:
             return Response({"error": "Invalid subscription_type"}, status=400)
@@ -160,8 +127,21 @@ class UnifiedPaymentInitView(APIView):
         if payment_method not in ["click", "payme"]:
             return Response({"error": "Invalid payment_method"}, status=400)
 
+        if not program_id:
+            return Response({"error": "program_id is required"}, status=400)
+
         user = request.user
         amount = SUBSCRIPTION_COSTS[subscription_type]
+
+        # Validate the program
+        try:
+            program = Program.objects.get(id=program_id, is_active=True)
+        except Program.DoesNotExist:
+            return Response({"error": "Invalid or inactive program_id"}, status=400)
+
+        # Ensure the program matches the user's goal
+        if program.program_goal != user.goal:
+            return Response({"error": "Selected program does not match your goal"}, status=400)
 
         # Update or create subscription object
         subscription, _ = UserSubscription.objects.get_or_create(user=user, is_active=True)
@@ -169,8 +149,17 @@ class UnifiedPaymentInitView(APIView):
         subscription.is_active = False  # Set to True only after successful payment
         subscription.save()
 
-        # Create a UserProgram (for Payme callbacks)
-        user_program = UserProgram.objects.create(user=user, program=None, amount=amount)
+        # Update or create a UserProgram
+        user_program, created = UserProgram.objects.get_or_create(
+            user=user,
+            is_active=True,
+            defaults={"program": program, "amount": amount, "subscription_type": subscription_type}
+        )
+        if not created:
+            user_program.program = program
+            user_program.amount = amount
+            user_program.subscription_type = subscription_type
+            user_program.save()
 
         if payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"

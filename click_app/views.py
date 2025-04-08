@@ -94,63 +94,17 @@ class OrderCheckAndPayment(PyClick):
             logger.error(f"❌ No subscription found with ID: {order_id}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
-        """
-        Handles canceled payments by ensuring the subscription remains unaffected.
-        """
         transaction = PyClick.get_by_transaction_id(transaction_id=params["id"])
-        user_program_id = transaction.account.id
+        user_subscription_id = transaction.order_id  # Use order_id instead of account.id
         try:
-            user_program = UserProgram.objects.get(id=user_program_id)
-            user_program.is_paid = False
-            user_program.save()
-        except UserProgram.DoesNotExist:
-            logger.error(f"❌ No subscription found with ID: {user_program_id}")
+            user_subscription = UserSubscription.objects.get(id=user_subscription_id)
+            user_subscription.is_active = False  # Ensure subscription remains inactive
+            user_subscription.save()
+            logger.info(f"✅ Cancelled payment for subscription ID: {user_subscription_id}")
+        except UserSubscription.DoesNotExist:
+            logger.error(f"❌ No subscription found with ID: {user_subscription_id}")
 
-    def create_sessions_for_user(self, user):
-        """
-        Creates session records for the user's active program using the new unified design.
-        For each session, creates:
-          - SessionCompletion
-          - MealCompletion records for each meal
-          - ExerciseBlockCompletion record (since the block now holds the exercises)
-        """
-        logger.info(f"🔄 Creating sessions for {user.email_or_phone}...")
-        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-        if not user_program:
-            logger.warning(f"⚠ No active program found for user {user.email_or_phone}. Skipping session creation.")
-            return
 
-        sessions = user_program.program.sessions.order_by("session_number")
-        start_date = timezone.now().date()
-
-        for index, session in enumerate(sessions, start=1):
-            session_date = start_date + timedelta(days=index - 1)
-            # Create session completion record
-            SessionCompletion.objects.create(
-                user=user,
-                session=session,
-                is_completed=False,
-                session_number_private=session.session_number,
-                session_date=session_date,
-            )
-            # Create meal completion records for each meal in the session
-            for meal in session.meals.all():
-                MealCompletion.objects.create(
-                    user=user,
-                    meal=meal,
-                    session=session,
-                    is_completed=False,
-                    meal_date=session_date,
-                )
-            # Create a completion record for the exercise block (if exists)
-            if hasattr(session, 'block'):
-                from users_app.models import ExerciseBlockCompletion
-                ExerciseBlockCompletion.objects.create(
-                    user=user,
-                    block=session.block,
-                    is_completed=False
-                )
-        logger.info(f"✅ Successfully created {sessions.count()} sessions for {user.email_or_phone}!")
 
 class OrderTestView(PyClickMerchantAPIView):
     VALIDATE_CLASS = OrderCheckAndPayment

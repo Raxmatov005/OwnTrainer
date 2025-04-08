@@ -19,8 +19,8 @@ from .subscribtion_check import IsSubscriptionActive
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.utils import timezone
 from .subscribtion_check import IsSubscriptionActive
-
-
+from django.db.models import Q
+from django.db.models import Prefetch
 from django.utils.timezone import now, localdate
 from django.db.models import Sum, Count
 
@@ -513,7 +513,21 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     Endpoints for listing, retrieving, creating, and updating Exercises.
     Uses separate serializers for create and update operations.
     """
-    queryset = Exercise.objects.all()
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser or user.is_staff:
+            return Exercise.objects.all()
+
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program or not user_program.is_subscription_active():
+            return Exercise.objects.none()
+
+        # Filter exercises by the user's program and goal
+        return Exercise.objects.filter(
+            blocks__session__program=user_program.program,
+            exercise_type=user.goal
+        ).distinct()
     permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
     parser_classes = [JSONParser]
 
@@ -629,11 +643,14 @@ class CompleteBlockView(APIView):
         block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
         session = block.session  # OneToOne
 
+        # Check if all exercises in the block match the user's goal
+        mismatched_exercises = block.exercises.filter(~Q(exercise_type=request.user.goal))
+        if mismatched_exercises.exists():
+            return Response({"error": _("This block contains exercises that do not match your goal.")}, status=400)
+
         # Mark the block as completed for this user
         bc, created = block.completions.get_or_create(user=request.user)
         if bc.is_completed:
-            # Already completed
-            # But still check if the session can now be completed (maybe meals were just finished)
             session_completed = maybe_mark_session_completed(request.user, session)
             return Response({
                 "message": _("Block already completed."),
@@ -646,7 +663,6 @@ class CompleteBlockView(APIView):
         bc.completion_date = timezone.now().date()
         bc.save()
 
-        # Now check if we can mark the session completed
         session_completed = maybe_mark_session_completed(request.user, session)
 
         return Response({
@@ -720,17 +736,20 @@ class UserProgramViewSet(viewsets.ModelViewSet):
             language = self.get_user_language()
             program_id = request.data.get("program")
 
-            # ✅ Ensure program_id is valid
             if not program_id or not str(program_id).isdigit():
                 return Response({"error": _("Valid program_id is required.")}, status=status.HTTP_400_BAD_REQUEST)
 
             program_id = int(program_id)
 
-            # ✅ Validate program existence
             try:
                 program = Program.objects.get(id=program_id, is_active=True)
             except Program.DoesNotExist:
                 return Response({"error": _("Invalid or inactive program_id.")}, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if the program's goal matches the user's goal
+            if program.program_goal != request.user.goal:
+                return Response({"error": _("This program does not match your goal.")},
+                                status=status.HTTP_400_BAD_REQUEST)
 
             create_serializer = UserProgramCreateSerializer(data=request.data)
             if create_serializer.is_valid():
@@ -817,18 +836,22 @@ class UserFullProgramDetailView(APIView):
 
         def get(self, request):
             try:
-                user_program = UserProgram.objects.filter(user=request.user, is_active=True).select_related("program").first()
+                user_program = UserProgram.objects.filter(user=request.user, is_active=True).select_related(
+                    "program").first()
 
                 if not user_program:
                     return Response({"error": _("No active program found for the user.")},
                                     status=status.HTTP_404_NOT_FOUND)
 
                 if not user_program.is_subscription_active():
-                    return Response({"error": _("Your subscription has ended. Please renew.")}, status=status.HTTP_403_FORBIDDEN)
+                    return Response({"error": _("Your subscription has ended. Please renew.")},
+                                    status=status.HTTP_403_FORBIDDEN)
 
-                # ✅ Optimize query using select_related and prefetch_related
-                sessions = Session.objects.filter(program=user_program.program)\
-                    .prefetch_related('exercises', 'meals__preparations')
+                sessions = Session.objects.filter(program=user_program.program) \
+                    .prefetch_related(
+                    Prefetch('exercises', queryset=Exercise.objects.filter(exercise_type=request.user.goal)),
+                    Prefetch('meals', queryset=Meal.objects.filter(goal_type=request.user.goal))
+                )
 
                 response_data = {
                     "program": {
@@ -854,6 +877,7 @@ class UserFullProgramDetailView(APIView):
                                     "difficulty_level": exercise.difficulty_level,
                                     "target_muscle": exercise.target_muscle,
                                     "video_url": exercise.video_url,
+                                    "exercise_type": exercise.exercise_type,
                                 }
                                 for exercise in session.exercises.all()
                             ],
@@ -866,6 +890,7 @@ class UserFullProgramDetailView(APIView):
                                     "water_content": meal.water_content,
                                     "preparation_time": meal.preparation_time,
                                     "is_completed": self._is_meal_completed(request.user, session, meal),
+                                    "goal_type": meal.goal_type,
                                     "preparations": [
                                         {
                                             "id": preparation.id,
@@ -1020,28 +1045,32 @@ class StatisticsView(APIView):
         return result
 
     def _get_day_info(self, user, date, include_calories=False):
-        # The comment “Incorrect filtering by session_date” is just leftover text;
-        # we’re actually filtering by completion_date now, which is correct.
         sessions_this_day = SessionCompletion.objects.filter(
             user=user,
             is_completed=True,
-            completion_date=date
-        )
+            completion_date=date,
+            session__block__exercises__exercise_type=user.goal
+        ).distinct()
 
         session_complete = sessions_this_day.exists()
         day_info = {"session_complete": session_complete}
 
         if include_calories:
             total_burned = SessionCompletion.objects.filter(
-                user=user, completion_date=date, is_completed=True
+                user=user,
+                completion_date=date,
+                is_completed=True,
+                session__block__exercises__exercise_type=user.goal
             ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
 
             total_gained = MealCompletion.objects.filter(
-                user=user, completion_date=date, is_completed=True
+                user=user,
+                completion_date=date,
+                is_completed=True,
+                meal__goal_type=user.goal
             ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
 
             day_info["total_calories_burned"] = float(total_burned)
             day_info["calories_gained"] = float(total_gained)
 
         return day_info
-

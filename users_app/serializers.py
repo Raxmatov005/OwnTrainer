@@ -54,7 +54,6 @@ class InitialRegisterSerializer(serializers.ModelSerializer):
 
 
 class CompleteProfileSerializer(serializers.ModelSerializer):
-    goal = serializers.ChoiceField(choices=[], label=_("Goal"), help_text=_("Select your goal"))
 
     class Meta:
         model = User
@@ -68,23 +67,6 @@ class CompleteProfileSerializer(serializers.ModelSerializer):
             'goal': {'required': True},
             'level': {'required': True},
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        try:
-            self.fields['goal'].choices = [(goal, goal) for goal in
-                                           Program.objects.values_list('program_goal', flat=True)]
-        except Exception as e:
-            logger.error(f"Error fetching program goals: {e}")
-            self.fields['goal'].choices = []
-
-    def validate_goal(self, value):
-        valid_goals = Program.objects.values_list('program_goal', flat=True)
-        if value not in valid_goals:
-            raise serializers.ValidationError(
-                _("Invalid goal. Choose one from: ") + ", ".join(valid_goals)
-            )
-        return value
 
 
     def validate_age(self,value):
@@ -203,60 +185,10 @@ class ResetPasswordSerializer(serializers.Serializer):
         return value
 
 
-# class ExerciseFullSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Exercise
-#         fields = ['id', 'name', 'description', 'sequence_number', 'exercise_time', 'gif']
-#
-#
-# class MealFullSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Meal
-#         fields = ['id', 'meal_type', 'food_name', 'calories', 'water_content', 'preparation_time']
-#
-#
-# class SessionFullSerializer(serializers.ModelSerializer):
-#     exercises = ExerciseFullSerializer(many=True)
-#     meals = MealFullSerializer(many=True)
-#
-#     class Meta:
-#         model = Session
-#         fields = ['id', 'scheduled_date', 'completion_status', 'calories_burned', 'session_time', 'exercises', 'meals']
-
-
-# class ProgramFullSerializer(serializers.ModelSerializer):
-#     sessions = SessionFullSerializer(many=True, source='session_set')
-#
-#     class Meta:
-#         model = Program
-#         fields = ['id', 'program_goal', 'goal_type', 'frequency_per_week', 'total_sessions', 'is_active', 'sessions']
-
-
-# class UserProgramFullSerializer(serializers.ModelSerializer):
-#     program = ProgramFullSerializer()
-#
-#     class Meta:
-#         model = UserProgram
-#         fields = ['id', 'start_date', 'end_date', 'progress', 'is_active', 'program']
-
-
 class UserPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProgram
         fields = "__all__"
-
-
-# class ProgramSerializer(serializers.ModelSerializer):
-#     goal = serializers.SerializerMethodField()
-#
-#     class Meta:
-#         model = Program
-#         fields = ['id', 'goal', 'frequency_per_week', 'total_sessions']
-#
-#     def get_goal(self, obj):
-#         request = self.context.get('request')
-#         language = getattr(request.user, 'language', 'en') if request else 'en'
-#         return getattr(obj, f'program_goal_{language}', obj.program_goal)
 
 
 class LanguageUpdateSerializer(serializers.Serializer):

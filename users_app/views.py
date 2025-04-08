@@ -434,9 +434,61 @@ class CompleteProfileView(APIView):
         serializer = self.get_serializer(instance=request.user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            user = request.user
+            matching_program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
+            if matching_program:
+                user_program, created = UserProgram.objects.get_or_create(
+                    user=user,
+                    program=matching_program,
+                    defaults={'is_active': True}
+                )
+                self.create_sessions_for_user(user, matching_program)
+            else:
+                logger.warning(f"No matching program found for user {user.email_or_phone} with goal {user.goal}")
             return Response({"message": _("Profile updated successfully.")}, status=status.HTTP_200_OK)
-
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def create_sessions_for_user(self, user, program):
+        """Initialize all sessions, meals, and blocks for the user."""
+        logger.info(f"🔄 Creating sessions for {user.email_or_phone}...")
+        if not program:
+            logger.warning(f"⚠ No active program found for user {user.email_or_phone}. Skipping session creation.")
+            return
+
+        sessions = program.sessions.order_by("session_number")
+        start_date = timezone.now().date()
+
+        for index, session in enumerate(sessions, start=1):
+            session_date = start_date + timedelta(days=index - 1)
+            # SessionCompletion
+            SessionCompletion.objects.get_or_create(
+                user=user,
+                session=session,
+                defaults={
+                    'is_completed': False,
+                    'session_number_private': session.session_number,
+                    'session_date': session_date
+                }
+            )
+            # MealCompletion
+            for meal in session.meals.all():
+                MealCompletion.objects.get_or_create(
+                    user=user,
+                    meal=meal,
+                    session=session,
+                    defaults={
+                        'is_completed': False,
+                        'meal_date': session_date
+                    }
+                )
+            # ExerciseBlockCompletion
+            if hasattr(session, 'block'):
+                ExerciseBlockCompletion.objects.get_or_create(
+                    user=user,
+                    block=session.block,
+                    defaults={'is_completed': False}
+                )
+        logger.info(f"✅ Successfully created {sessions.count()} sessions for {user.email_or_phone}!")
 
 
 class UserProfileUpdateView(APIView):

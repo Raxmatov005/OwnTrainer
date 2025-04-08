@@ -43,7 +43,7 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault('age', 30)  # Default age for admin
         extra_fields.setdefault('height', 170)  # Default height
         extra_fields.setdefault('weight', 70)  # Default weight
-        extra_fields.setdefault('goal', 'General Fitness')
+        extra_fields.setdefault('goal', 'gain_muscle')
         extra_fields.setdefault('level', 'Intermediate')
         extra_fields.setdefault('photo', 'default_photo.jpg')  # Default photo path
 
@@ -72,6 +72,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('ru', 'Russian'),
         ('uz', 'Uzbek'),
     ]
+    GOAL_CHOICES = (
+        ('gain_muscle', 'Gain Muscle'),
+        ('lose_weight', 'Lose Weight'),
+        ('gain_weight', 'Gain Weight'),
+    )
 
     first_name = models.CharField(max_length=30, blank=False, null=False)
     last_name = models.CharField(max_length=30, blank=False, null=False)
@@ -90,7 +95,7 @@ class User(AbstractBaseUser, PermissionsMixin):
                                          validators=[MinValueValidator(140), MaxValueValidator(220)])
     weight = models.PositiveIntegerField(blank=True, null=True,
                                          validators=[MinValueValidator(30), MaxValueValidator(200)])
-    goal = models.CharField(max_length=255, blank=True, null=True)
+    goal = models.CharField(max_length=20, choices=GOAL_CHOICES, blank=True, null=True)
     level = models.CharField(max_length=50, blank=True, null=True)
     is_premium = models.BooleanField(default=False)
     photo = models.ImageField(upload_to='user_photos/', blank=True, null=True)
@@ -124,20 +129,27 @@ class UserProgress(models.Model):
 
 
 class Program(models.Model):
+    GOAL_CHOICES = (
+        ('gain_muscle', 'Gain Muscle'),
+        ('lose_weight', 'Lose Weight'),
+        ('gain_weight', 'Gain Weight'),
+    )
     total_sessions = models.IntegerField(default=0)  # Number of sessions in the program
-    program_goal = models.CharField(max_length=255)
+    program_goal = models.CharField(max_length=20, choices=GOAL_CHOICES)
     program_goal_uz = models.CharField(max_length=255, blank=True, null=True)
     program_goal_ru = models.CharField(max_length=255, blank=True, null=True)
     program_goal_en = models.CharField(max_length=255, blank=True, null=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
+        # Translate the display value of program_goal (e.g., "Gain Muscle")
+        display_goal = self.get_program_goal_display()
         if not self.program_goal_uz:
-            self.program_goal_uz = translate_text(self.program_goal, 'uz')
+            self.program_goal_uz = translate_text(display_goal, 'uz')
         if not self.program_goal_ru:
-            self.program_goal_ru = translate_text(self.program_goal, 'ru')
+            self.program_goal_ru = translate_text(display_goal, 'ru')
         if not self.program_goal_en:
-            self.program_goal_en = translate_text(self.program_goal, 'en')
+            self.program_goal_en = translate_text(display_goal, 'en')
         super(Program, self).save(*args, **kwargs)
 
     def __str__(self):
@@ -145,50 +157,30 @@ class Program(models.Model):
 
 
 
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
 class UserSubscription(models.Model):
-    """
-    Tracks actual subscription payments and durations separately from sessions.
-    """
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
-    subscription_type = models.CharField(
-        max_length=20,
-        choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')],
-        default='month'
-    )
+    subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
     start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
-        """
-        ✅ Automatically sets the correct `end_date` based on subscription type.
-        ✅ Prevents expired subscriptions from being marked active.
-        """
         if not self.end_date:
-            add_days = {
-                'month': 30,
-                'quarter': 90,
-                'year': 365
-            }.get(self.subscription_type, 30)
-
+            add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
             self.end_date = self.start_date + timedelta(days=add_days)
-
-        # Ensure subscription is not active if expired
         if self.end_date and self.end_date.date() < timezone.now().date():
             self.is_active = False
-
         super(UserSubscription, self).save(*args, **kwargs)
 
     def is_subscription_active(self):
-        """
-        ✅ Checks if the subscription is still valid.
-        """
         return self.is_active and self.end_date >= timezone.now().date()
 
     def extend_subscription(self, add_days):
-        """
-        ✅ Extends subscription duration based on additional payments.
-        """
         if self.end_date >= timezone.now().date():
             self.end_date += timedelta(days=add_days)
         else:
@@ -196,12 +188,71 @@ class UserSubscription(models.Model):
             self.end_date = self.start_date + timedelta(days=add_days)
         self.save()
 
-        # 🚀 Auto-create sessions on subscription activation
+@receiver(post_save, sender=UserSubscription)
+def create_sessions_on_subscription(sender, instance, created, **kwargs):
+    if created or instance.is_active:
         from exercise.views import create_sessions_for_user
-        create_sessions_for_user(self.user)  # ✅ Call the function to create sessions
+        create_sessions_for_user(instance.user)
 
-    def __str__(self):
-        return f"{self.user} - {self.subscription_type} (Active: {self.is_active})"
+
+
+# class UserSubscription(models.Model):
+#     """
+#     Tracks actual subscription payments and durations separately from sessions.
+#     """
+#     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
+#     subscription_type = models.CharField(
+#         max_length=20,
+#         choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')],
+#         default='month'
+#     )
+#     start_date = models.DateField(default=timezone.now)
+#     end_date = models.DateField(null=True, blank=True)
+#     is_active = models.BooleanField(default=True)
+#
+#     def save(self, *args, **kwargs):
+#         """
+#         ✅ Automatically sets the correct `end_date` based on subscription type.
+#         ✅ Prevents expired subscriptions from being marked active.
+#         """
+#         if not self.end_date:
+#             add_days = {
+#                 'month': 30,
+#                 'quarter': 90,
+#                 'year': 365
+#             }.get(self.subscription_type, 30)
+#
+#             self.end_date = self.start_date + timedelta(days=add_days)
+#
+#         # Ensure subscription is not active if expired
+#         if self.end_date and self.end_date.date() < timezone.now().date():
+#             self.is_active = False
+#
+#         super(UserSubscription, self).save(*args, **kwargs)
+#
+#     def is_subscription_active(self):
+#         """
+#         ✅ Checks if the subscription is still valid.
+#         """
+#         return self.is_active and self.end_date >= timezone.now().date()
+#
+#     def extend_subscription(self, add_days):
+#         """
+#         ✅ Extends subscription duration based on additional payments.
+#         """
+#         if self.end_date >= timezone.now().date():
+#             self.end_date += timedelta(days=add_days)
+#         else:
+#             self.start_date = timezone.now().date()
+#             self.end_date = self.start_date + timedelta(days=add_days)
+#         self.save()
+#
+#         # 🚀 Auto-create sessions on subscription activation
+#         from exercise.views import create_sessions_for_user
+#         create_sessions_for_user(self.user)  # ✅ Call the function to create sessions
+#
+#     def __str__(self):
+#         return f"{self.user} - {self.subscription_type} (Active: {self.is_active})"
 
 
 from django.db import models
@@ -322,6 +373,12 @@ class SessionCompletion(models.Model):
 
 
 class Exercise(models.Model):
+    EXERCISE_TYPES = (
+        ('gain_muscle', 'Gain Muscle'),
+        ('lose_weight', 'Lose Weight'),
+        ('gain_weight', 'Gain Weight'),
+    )
+    exercise_type = models.CharField(max_length=20, choices=EXERCISE_TYPES, default='gain_muscle')
     exercise_time = models.DurationField(null=True, blank=True)
     sequence_number = models.IntegerField(default=1)
 
@@ -440,8 +497,14 @@ class Meal(models.Model):
         ('snack', 'Snack'),
         ('dinner', 'Dinner'),
     )
+    GOAL_TYPES = (
+        ('gain_muscle', 'Gain Muscle'),
+        ('lose_weight', 'Lose Weight'),
+        ('gain_weight', 'Gain Weight'),
+    )
 
     meal_type = models.CharField(max_length=20, choices=MEAL_TYPES)
+    goal_type = models.CharField(max_length=20, choices=GOAL_TYPES, default='gain_muscle')
     food_name = models.CharField(max_length=255)
     food_name_uz = models.CharField(max_length=255, blank=True, null=True)
     food_name_ru = models.CharField(max_length=255, blank=True, null=True)
@@ -464,6 +527,18 @@ class Meal(models.Model):
     video_url = models.URLField(max_length=500, blank=True, null=True)
 
     def save(self, *args, **kwargs):
+        # Translate food_name
+        self.food_name_uz = translate_text(self.food_name, 'uz')
+        self.food_name_ru = translate_text(self.food_name, 'ru')
+        self.food_name_en = translate_text(self.food_name, 'en')
+
+        # Translate meal_type (display value)
+        display_meal_type = self.get_meal_type_display()
+        self.meal_type_uz = translate_text(display_meal_type, 'uz')
+        self.meal_type_ru = translate_text(display_meal_type, 'ru')
+        self.meal_type_en = translate_text(display_meal_type, 'en')
+
+        # Translate description
         if self.description:
             self.description_uz = translate_text(self.description, 'uz')
             self.description_ru = translate_text(self.description, 'ru')
