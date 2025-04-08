@@ -661,12 +661,30 @@ class UserProgramViewSet(viewsets.ModelViewSet):
         serializer_class = UserProgramSerializer
         permission_classes = [IsAuthenticated]
 
+        def get_user_language(self):
+            """
+            Determines the user's language preference.
+            Checks authenticated user's language attribute first,
+            then falls back to 'lang' query parameter,
+            and finally defaults to 'en'.
+            """
+            # Check authenticated user first
+            if self.request.user.is_authenticated and hasattr(self.request.user,
+                                                              'language') and self.request.user.language:
+                return self.request.user.language
+
+            # Fallback to query parameter
+            lang_param = self.request.query_params.get('lang')
+            if lang_param:
+                return lang_param
+
+            # Default language if none found
+            return 'en'  # Or get default from settings: settings.LANGUAGE_CODE
+
         def get_serializer_context(self):
             context = super().get_serializer_context()
-            if self.request.user.is_authenticated:
-                context['language'] = self.request.user.language
-            else:
-                context['language'] = self.request.query_params.get('lang', 'en')
+            # Use the new method to ensure consistency
+            context['language'] = self.get_user_language()
             return context
 
         def get_queryset(self):
