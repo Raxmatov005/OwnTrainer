@@ -10,6 +10,7 @@ from threading import Timer
 from django.utils.timezone import now
 from celery import shared_task
 from drf_extra_fields.fields import Base64ImageField
+from users_app.models import translate_text
 
 translator = Translator()
 
@@ -20,6 +21,10 @@ def translate_field(instance, field_name, language):
     if hasattr(instance, translated_field):
         return getattr(instance, translated_field) or getattr(instance, field_name)
     return getattr(instance, field_name)
+
+
+
+
 
 
 # ------------------------------
