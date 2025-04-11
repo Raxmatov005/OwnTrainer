@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 from googletrans import Translator
 from django.utils.timezone import now
 from users_app.models import Meal, MealSteps, MealCompletion, Session
+from users_app.models import translate_text
 
 translator = Translator()
 
