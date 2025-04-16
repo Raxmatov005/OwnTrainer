@@ -1,6 +1,8 @@
 from django.utils import timezone
 from rest_framework.permissions import BasePermission
+from django.utils.translation import gettext_lazy as _
 from users_app.models import UserSubscription  # Ensure this import is correct
+
 
 class IsSubscriptionActive(BasePermission):
     """
@@ -14,9 +16,18 @@ class IsSubscriptionActive(BasePermission):
             return True
 
         # ✅ Check if regular users have an active subscription
-        return UserSubscription.objects.filter(
+        has_subscription = UserSubscription.objects.filter(
             user=request.user, is_active=True, end_date__gte=timezone.now().date()
         ).exists()
+
+        if not has_subscription:
+            self.message = {
+                "error": _("Please upgrade your subscription to access exercise blocks."),
+                "subscription_options_url": request.build_absolute_uri("/api/subscriptions/options/")
+            }
+            return False
+
+        return True
 
 
 class StaffOrSubscriptionActive(BasePermission):
