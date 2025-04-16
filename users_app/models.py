@@ -7,6 +7,9 @@ from django.utils import timezone
 from django.utils.timezone import now
 from datetime import timedelta
 
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
 
 
 
@@ -159,8 +162,6 @@ class Program(models.Model):
 
 
 
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 
 class UserSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
@@ -175,6 +176,10 @@ class UserSubscription(models.Model):
             self.end_date = self.start_date + timedelta(days=add_days)
         if self.end_date and self.end_date.date() < timezone.now().date():
             self.is_active = False
+            self.user.is_premium = False  # Sync is_premium
+        else:
+            self.user.is_premium = True  # Sync is_premium
+        self.user.save()  # Save user to update is_premium
         super(UserSubscription, self).save(*args, **kwargs)
 
     def is_subscription_active(self):
@@ -188,78 +193,13 @@ class UserSubscription(models.Model):
             self.end_date = self.start_date + timedelta(days=add_days)
         self.save()
 
+
 @receiver(post_save, sender=UserSubscription)
 def create_sessions_on_subscription(sender, instance, created, **kwargs):
     if created or instance.is_active:
         from exercise.views import create_sessions_for_user
         create_sessions_for_user(instance.user)
 
-
-
-# class UserSubscription(models.Model):
-#     """
-#     Tracks actual subscription payments and durations separately from sessions.
-#     """
-#     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
-#     subscription_type = models.CharField(
-#         max_length=20,
-#         choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')],
-#         default='month'
-#     )
-#     start_date = models.DateField(default=timezone.now)
-#     end_date = models.DateField(null=True, blank=True)
-#     is_active = models.BooleanField(default=True)
-#
-#     def save(self, *args, **kwargs):
-#         """
-#         ✅ Automatically sets the correct `end_date` based on subscription type.
-#         ✅ Prevents expired subscriptions from being marked active.
-#         """
-#         if not self.end_date:
-#             add_days = {
-#                 'month': 30,
-#                 'quarter': 90,
-#                 'year': 365
-#             }.get(self.subscription_type, 30)
-#
-#             self.end_date = self.start_date + timedelta(days=add_days)
-#
-#         # Ensure subscription is not active if expired
-#         if self.end_date and self.end_date.date() < timezone.now().date():
-#             self.is_active = False
-#
-#         super(UserSubscription, self).save(*args, **kwargs)
-#
-#     def is_subscription_active(self):
-#         """
-#         ✅ Checks if the subscription is still valid.
-#         """
-#         return self.is_active and self.end_date >= timezone.now().date()
-#
-#     def extend_subscription(self, add_days):
-#         """
-#         ✅ Extends subscription duration based on additional payments.
-#         """
-#         if self.end_date >= timezone.now().date():
-#             self.end_date += timedelta(days=add_days)
-#         else:
-#             self.start_date = timezone.now().date()
-#             self.end_date = self.start_date + timedelta(days=add_days)
-#         self.save()
-#
-#         # 🚀 Auto-create sessions on subscription activation
-#         from exercise.views import create_sessions_for_user
-#         create_sessions_for_user(self.user)  # ✅ Call the function to create sessions
-#
-#     def __str__(self):
-#         return f"{self.user} - {self.subscription_type} (Active: {self.is_active})"
-
-
-from django.db import models
-from django.utils import timezone
-from django.core.validators import MinValueValidator, MaxValueValidator
-# Ensure you import your other models if you need them
-# from users_app.models import SessionCompletion, Program, User (adjust as needed)
 
 class UserProgram(models.Model):
     """

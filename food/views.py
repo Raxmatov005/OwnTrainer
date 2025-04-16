@@ -166,7 +166,9 @@ class MealViewSet(viewsets.ModelViewSet):
         user = request.user
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
 
-        if not user_program or not user_program.is_subscription_active():
+        if not user_program or not UserSubscription.objects.filter(
+                user=user, is_active=True, end_date__gte=timezone.now().date()
+        ).exists():
             # Return a friendly message prompting subscription upgrade
             return Response(
                 {
