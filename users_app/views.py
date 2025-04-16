@@ -839,6 +839,8 @@ SUBSCRIPTION_OPTIONS = {
     "year": {"price": 90000, "days": 365, "label": "Yearly"}
 }
 
+
+
 class SubscriptionOptionsAPIView(APIView):
     """
     ✅ Returns available subscription options to the mobile developer.
