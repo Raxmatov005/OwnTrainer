@@ -192,13 +192,17 @@ class UserSubscription(models.Model):
         return self.is_active and self.end_date >= timezone.now().date()
 
     def extend_subscription(self, add_days):
-        if self.end_date >= timezone.now().date():
-            self.end_date += timedelta(days=add_days)
+        today = timezone.now().date()
+        if self.end_date and self.end_date >= today:
+            self.end_date = self.end_date + timedelta(days=add_days)
         else:
-            self.start_date = timezone.now().date()
-            self.end_date = self.start_date + timedelta(days=add_days)
+            self.start_date = today
+            self.end_date = today + timedelta(days=add_days)
+        # Ensure end_date is a datetime.date
+        if isinstance(self.end_date, datetime):
+            self.end_date = self.end_date.date()
+        self.is_active = True
         self.save()
-
 
 @receiver(post_save, sender=UserSubscription)
 def create_sessions_on_subscription(sender, instance, created, **kwargs):
