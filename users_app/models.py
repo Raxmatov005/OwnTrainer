@@ -207,7 +207,7 @@ class UserSubscription(models.Model):
 @receiver(post_save, sender=UserSubscription)
 def create_sessions_on_subscription(sender, instance, created, **kwargs):
     if created or instance.is_active:
-        from exercise.views import create_sessions_for_user
+        from users_app.views import create_sessions_for_user
         create_sessions_for_user(instance.user)
 
 
