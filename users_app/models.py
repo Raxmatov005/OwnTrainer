@@ -166,21 +166,27 @@ class Program(models.Model):
 class UserSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
     subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
-    start_date = models.DateField(default=timezone.now)
+    start_date = models.DateField(default=timezone.now().date)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
+        # Convert start_date to datetime.date if it's a datetime.datetime
+        if isinstance(self.start_date, datetime):
+            self.start_date = self.start_date.date()
         if not self.end_date:
             add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
             self.end_date = self.start_date + timedelta(days=add_days)
+        # Convert end_date to datetime.date if it's a datetime.datetime
+        if self.end_date and isinstance(self.end_date, datetime):
+            self.end_date = self.end_date.date()
         if self.end_date and self.end_date < timezone.now().date():
             self.is_active = False
-            self.user.is_premium = False  # Sync is_premium
+            self.user.is_premium = False
         else:
-            self.user.is_premium = True  # Sync is_premium
-        self.user.save()  # Save user to update is_premium
-        super(UserSubscription, self).save(*args, **kwargs)
+            self.user.is_premium = True
+        self.user.save()
+        super().save(*args, **kwargs)
 
     def is_subscription_active(self):
         return self.is_active and self.end_date >= timezone.now().date()
