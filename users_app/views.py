@@ -2,7 +2,7 @@
 from django.contrib.auth import authenticate, login, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from users_app.models import (User, Notification, Program, UserProgram, MealCompletion, Session,
-                              SessionCompletion)
+                              ExerciseBlockCompletion, SessionCompletion)
 
 from .models import Notification
 from django.core.exceptions import ValidationError as DjangoValidationError
