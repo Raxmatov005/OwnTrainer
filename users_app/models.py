@@ -174,7 +174,7 @@ class UserSubscription(models.Model):
         if not self.end_date:
             add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
             self.end_date = self.start_date + timedelta(days=add_days)
-        if self.end_date and self.end_date.date() < timezone.now().date():
+        if self.end_date and self.end_date < timezone.now().date():
             self.is_active = False
             self.user.is_premium = False  # Sync is_premium
         else:
