@@ -81,7 +81,7 @@ class MealViewSet(viewsets.ModelViewSet):
         has_active_subscription = UserSubscription.objects.filter(
             user=user,
             is_active=True,
-            end_date__gte=user_program.end_date
+            end_date__gte=timezone.now().date()  # Use current date instead
         ).exists()
 
         if not has_active_subscription:
@@ -167,7 +167,7 @@ class MealViewSet(viewsets.ModelViewSet):
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
 
         if not user_program or not UserSubscription.objects.filter(
-                user=user, is_active=True, end_date__gte=timezone.now().date()
+            user=user, is_active=True, end_date__gte=timezone.now().date()
         ).exists():
             # Return a friendly message prompting subscription upgrade
             return Response(
@@ -204,7 +204,6 @@ class MealViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 class MealStepViewSet(viewsets.ModelViewSet):
