@@ -12,8 +12,8 @@ from django.core.validators import EmailValidator
 import random
 import logging
 import re
-from datetime import datetime, timedelta, timezone	
-
+from datetime import datetime, timedelta
+from django.utils import timezone  # Correct
 
 from django.core.mail import send_mail
 from django.core.cache import cache
