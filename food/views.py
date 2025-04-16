@@ -149,9 +149,33 @@ class MealViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         operation_description="List Meals",
-        responses={200: MealListSerializer(many=True)}
+        responses={
+            200: MealListSerializer(many=True),
+            403: openapi.Response(
+                description="Subscription required",
+                examples={
+                    "application/json": {
+                        "error": "Please upgrade your subscription to access meals.",
+                        "subscription_options_url": "/api/subscriptions/options/"
+                    }
+                }
+            )
+        }
     )
     def list(self, request, *args, **kwargs):
+        user = request.user
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+
+        if not user_program or not user_program.is_subscription_active():
+            # Return a friendly message prompting subscription upgrade
+            return Response(
+                {
+                    "error": _("Please upgrade your subscription to access meals."),
+                    "subscription_options_url": request.build_absolute_uri("/api/subscriptions/options/")
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         return super().list(request, *args, **kwargs)
 
     @swagger_auto_schema(
