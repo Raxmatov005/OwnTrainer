@@ -105,6 +105,65 @@ def send_verification_email(subject, body, to_email):
 
 
 
+
+
+def create_sessions_for_user(user, program):
+    """Initialize sessions, meals, and blocks for a user."""
+    logger.info(f"🔄 Creating sessions for {user.email_or_phone}...")
+    if not program:
+        logger.warning(f"⚠ No active program found for user {user.email_or_phone}. Skipping session creation.")
+        return 0, 0, 0
+
+    sessions = program.sessions.order_by("session_number")
+    start_date = timezone.now().date()
+    sessions_count = 0
+    meals_count = 0
+    blocks_count = 0
+
+    for index, session in enumerate(sessions, start=1):
+        session_date = start_date + timedelta(days=index - 1)
+        # SessionCompletion
+        session_completion, created = SessionCompletion.objects.get_or_create(
+            user=user,
+            session=session,
+            defaults={
+                'is_completed': False,
+                'session_number_private': session.session_number,
+                'session_date': session_date
+            }
+        )
+        if created:
+            sessions_count += 1
+            logger.debug(f"Created SessionCompletion: user={user.email_or_phone}, session={session.session_number}")
+        # MealCompletion
+        for meal in session.meals.all():
+            meal_completion, created = MealCompletion.objects.get_or_create(
+                user=user,
+                meal=meal,
+                session=session,
+                defaults={
+                    'is_completed': False,
+                    'meal_date': session_date
+                }
+            )
+            if created:
+                meals_count += 1
+                logger.debug(f"Created MealCompletion: user={user.email_or_phone}, meal={meal.id}")
+        # ExerciseBlockCompletion
+        if hasattr(session, 'block') and session.block:
+            block_completion, created = ExerciseBlockCompletion.objects.get_or_create(
+                user=user,
+                block=session.block,
+                defaults={'is_completed': False}
+            )
+            if created:
+                blocks_count += 1
+                logger.debug(f"Created ExerciseBlockCompletion: user={user.email_or_phone}, block={session.block.id}")
+    logger.info(f"✅ Created {sessions_count} sessions, {meals_count} meals, {blocks_count} blocks for {user.email_or_phone}!")
+    return sessions_count, meals_count, blocks_count
+
+
+
 # Initial Register View
 class InitialRegisterView(APIView):
     permission_classes = [AllowAny]
@@ -436,59 +495,28 @@ class CompleteProfileView(APIView):
             serializer.save()
             user = request.user
             matching_program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
-            if matching_program:
-                user_program, created = UserProgram.objects.get_or_create(
-                    user=user,
-                    program=matching_program,
-                    defaults={'is_active': True}
-                )
-                self.create_sessions_for_user(user, matching_program)
-            else:
+            if not matching_program:
                 logger.warning(f"No matching program found for user {user.email_or_phone} with goal {user.goal}")
-            return Response({"message": _("Profile updated successfully.")}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def create_sessions_for_user(self, user, program):
-        """Initialize all sessions, meals, and blocks for the user."""
-        logger.info(f"🔄 Creating sessions for {user.email_or_phone}...")
-        if not program:
-            logger.warning(f"⚠ No active program found for user {user.email_or_phone}. Skipping session creation.")
-            return
-
-        sessions = program.sessions.order_by("session_number")
-        start_date = timezone.now().date()
-
-        for index, session in enumerate(sessions, start=1):
-            session_date = start_date + timedelta(days=index - 1)
-            # SessionCompletion
-            SessionCompletion.objects.get_or_create(
+                return Response(
+                    {"error": _("No program found for the selected goal.")},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            user_program, created = UserProgram.objects.get_or_create(
                 user=user,
-                session=session,
-                defaults={
-                    'is_completed': False,
-                    'session_number_private': session.session_number,
-                    'session_date': session_date
-                }
+                program=matching_program,
+                defaults={'is_active': True}
             )
-            # MealCompletion
-            for meal in session.meals.all():
-                MealCompletion.objects.get_or_create(
-                    user=user,
-                    meal=meal,
-                    session=session,
-                    defaults={
-                        'is_completed': False,
-                        'meal_date': session_date
-                    }
-                )
-            # ExerciseBlockCompletion
-            if hasattr(session, 'block'):
-                ExerciseBlockCompletion.objects.get_or_create(
-                    user=user,
-                    block=session.block,
-                    defaults={'is_completed': False}
-                )
-        logger.info(f"✅ Successfully created {sessions.count()} sessions for {user.email_or_phone}!")
+            sessions_count, meals_count, blocks_count = create_sessions_for_user(user, matching_program)
+            return Response(
+                {
+                    "message": _("Profile updated successfully."),
+                    "sessions_created": sessions_count,
+                    "meals_created": meals_count,
+                    "blocks_created": blocks_count
+                },
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserProfileUpdateView(APIView):
@@ -498,14 +526,70 @@ class UserProfileUpdateView(APIView):
     @swagger_auto_schema(
         operation_description="Update user's profile details",
         request_body=UserProfileUpdateSerializer,
-        responses={200: "Profile updated successfully."}
+        responses={
+            200: openapi.Response(
+                description="Profile updated successfully.",
+                examples={
+                    "application/json": {
+                        "message": "Profile updated successfully.",
+                        "sessions_created": 0,
+                        "meals_created": 0,
+                        "blocks_created": 0
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Invalid input data.",
+                examples={"application/json": {"error": "Invalid data provided."}}
+            ),
+            404: openapi.Response(
+                description="No matching program found.",
+                examples={"application/json": {"error": "No program found for the selected goal."}}
+            )
+        }
     )
     def patch(self, request):
         serializer = UserProfileUpdateSerializer(instance=request.user, data=request.data, partial=True)
         if serializer.is_valid():
+            old_goal = request.user.goal
             serializer.save()
-            return Response({"message": _("Profile updated successfully.")}, status=status.HTTP_200_OK)
+            user = request.user
+            new_goal = request.data.get('goal')
+            if new_goal and new_goal != old_goal:
+                # Clean up old records
+                UserProgram.objects.filter(user=user).update(is_active=False)
+                SessionCompletion.objects.filter(user=user).delete()
+                MealCompletion.objects.filter(user=user).delete()
+                ExerciseBlockCompletion.objects.filter(user=user).delete()
+                # Initialize new program
+                matching_program = Program.objects.filter(program_goal=new_goal, is_active=True).first()
+                if not matching_program:
+                    logger.warning(f"No matching program found for user {user.email_or_phone} with goal {new_goal}")
+                    return Response(
+                        {"error": _("No program found for the selected goal.")},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                user_program, created = UserProgram.objects.get_or_create(
+                    user=user,
+                    program=matching_program,
+                    defaults={'is_active': True}
+                )
+                sessions_count, meals_count, blocks_count = create_sessions_for_user(user, matching_program)
+                return Response(
+                    {
+                        "message": _("Profile updated successfully. Program reinitialized due to goal change."),
+                        "sessions_created": sessions_count,
+                        "meals_created": meals_count,
+                        "blocks_created": blocks_count
+                    },
+                    status=status.HTTP_200_OK
+                )
+            return Response(
+                {"message": _("Profile updated successfully.")},
+                status=status.HTTP_200_OK
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
