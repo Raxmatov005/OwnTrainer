@@ -166,7 +166,7 @@ class Program(models.Model):
 class UserSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
     subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
-    start_date = models.DateField(default=timezone.now().date)
+    start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
@@ -178,7 +178,7 @@ class UserSubscription(models.Model):
             add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
             self.end_date = self.start_date + timedelta(days=add_days)
         # Convert end_date to datetime.date if it's a datetime.datetime
-        if self.end_date and isinstance(self.end_date, datetime):
+        if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
         if self.end_date and self.end_date < timezone.now().date():
             self.is_active = False
