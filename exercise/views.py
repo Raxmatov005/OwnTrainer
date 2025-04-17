@@ -450,7 +450,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_description="List all accessible exercise blocks (subscription required for non-admins)",
         responses={
-            200: ExerciseBlockSerializer(many=True),
+            200: ExerciseBlockListSerializer(many=True),
             403: openapi.Response(
                 description="Subscription expired",
                 examples={
@@ -491,7 +491,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(
         operation_description="Retrieve a specific exercise block (subscription required for non-admins)",
         responses={
-            200: ExerciseBlockSerializer(),
+            200: ExerciseBlockDetailSerializer(),
             403: openapi.Response(
                 description="Subscription expired",
                 examples={
