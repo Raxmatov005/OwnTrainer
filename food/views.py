@@ -71,7 +71,8 @@ class MealViewSet(viewsets.ModelViewSet):
             return Meal.objects.none()
 
         user = self.request.user
-        if user.is_staff:
+        # Allow both staff and superusers to bypass subscription checks
+        if user.is_staff or user.is_superuser:
             return Meal.objects.all().prefetch_related("steps")
 
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
@@ -81,16 +82,15 @@ class MealViewSet(viewsets.ModelViewSet):
         has_active_subscription = UserSubscription.objects.filter(
             user=user,
             is_active=True,
-            end_date__gte=timezone.now().date()  # Use current date instead
+            end_date__gte=timezone.now().date()
         ).exists()
 
         if not has_active_subscription:
             return Meal.objects.none()
 
-        # Filter meals by the program's goal (which should match the user's goal)
         return Meal.objects.filter(
             sessions__program=user_program.program,
-            goal_type=user.goal  # Add this filter
+            goal_type=user.goal
         ).distinct().prefetch_related("steps")
 
     def get_serializer_class(self):
@@ -148,7 +148,7 @@ class MealViewSet(viewsets.ModelViewSet):
         return super().destroy(request, pk, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="List Meals",
+        operation_description="List Meals (subscription required for non-admins)",
         responses={
             200: MealListSerializer(many=True),
             403: openapi.Response(
@@ -164,28 +164,61 @@ class MealViewSet(viewsets.ModelViewSet):
     )
     def list(self, request, *args, **kwargs):
         user = request.user
-        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-
-        if not user_program or not UserSubscription.objects.filter(
-            user=user, is_active=True, end_date__gte=timezone.now().date()
-        ).exists():
-            # Return a friendly message prompting subscription upgrade
-            return Response(
-                {
-                    "error": _("Please upgrade your subscription to access meals."),
-                    "subscription_options_url": request.build_absolute_uri("/api/subscriptions/options/")
-                },
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # Allow admins to bypass subscription and program checks
+        if not (user.is_staff or user.is_superuser):
+            user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+            if not user_program or not UserSubscription.objects.filter(
+                user=user, is_active=True, end_date__gte=timezone.now().date()
+            ).exists():
+                return Response(
+                    {
+                        "error": _("Please upgrade your subscription to access meals."),
+                        "subscription_options_url": request.build_absolute_uri("/api/subscriptions/options/")
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
         return super().list(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Retrieve a single Meal",
-        responses={200: MealDetailSerializer()}
+        operation_description="Retrieve a single Meal (subscription required for non-admins)",
+        responses={
+            200: MealDetailSerializer(),
+            403: openapi.Response(
+                description="Subscription required",
+                examples={
+                    "application/json": {
+                        "error": "Please upgrade your subscription to access meals.",
+                        "subscription_options_url": "/api/subscriptions/options/"
+                    }
+                }
+            ),
+            404: openapi.Response(description="Meal not found")
+        }
     )
     def retrieve(self, request, pk=None, *args, **kwargs):
-        return super().retrieve(request, pk, *args, **kwargs)
+        user = request.user
+        # Check if the meal is accessible (for non-admins)
+        instance = self.get_object()  # This uses get_queryset
+        if not instance and not (user.is_staff or user.is_superuser):
+            user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+            if user_program:
+                has_active_subscription = UserSubscription.objects.filter(
+                    user=user,
+                    is_active=True,
+                    end_date__gte=timezone.now().date()
+                ).exists()
+                if not has_active_subscription:
+                    return Response(
+                        {
+                            "error": _("Please upgrade your subscription to access meals."),
+                            "subscription_options_url": request.build_absolute_uri("/api/subscriptions/options/")
+                        },
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     @swagger_auto_schema(
         method='patch',
@@ -204,7 +237,6 @@ class MealViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response({"message": "Meal photo updated."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class MealStepViewSet(viewsets.ModelViewSet):
     """
@@ -303,9 +335,9 @@ class CompleteMealView(APIView):
         if not meal:
             return Response({"error": _("Meal not found.")}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check if the meal's goal_type matches the user's goal
-        if meal.goal_type != request.user.goal:
-            return Response({"error": _("This meal does not match your goal.")}, status=status.HTTP_400_BAD_REQUEST)
+        # # Check if the meal's goal_type matches the user's goal
+        # if meal.goal_type != request.user.goal:
+        #     return Response({"error": _("This meal does not match your goal.")}, status=status.HTTP_400_BAD_REQUEST)
 
         user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
         if not user_program or not user_program.is_subscription_active():

@@ -555,16 +555,27 @@ class UserProfileUpdateView(APIView):
             serializer.save()
             user = request.user
             new_goal = request.data.get('goal')
-            if new_goal and new_goal != old_goal:
+
+            # Check if reinitialization is needed
+            reinitialize = False
+            user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+            matching_program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
+
+            if not user_program or not matching_program or user_program.program != matching_program:
+                reinitialize = True  # No active program, or the program doesn't match the user's goal
+            elif new_goal and new_goal != old_goal:
+                reinitialize = True  # Goal changed
+
+            if reinitialize:
                 # Clean up old records
                 UserProgram.objects.filter(user=user).update(is_active=False)
                 SessionCompletion.objects.filter(user=user).delete()
                 MealCompletion.objects.filter(user=user).delete()
                 ExerciseBlockCompletion.objects.filter(user=user).delete()
+
                 # Initialize new program
-                matching_program = Program.objects.filter(program_goal=new_goal, is_active=True).first()
                 if not matching_program:
-                    logger.warning(f"No matching program found for user {user.email_or_phone} with goal {new_goal}")
+                    logger.warning(f"No matching program found for user {user.email_or_phone} with goal {user.goal}")
                     return Response(
                         {"error": _("No program found for the selected goal.")},
                         status=status.HTTP_404_NOT_FOUND
@@ -575,21 +586,24 @@ class UserProfileUpdateView(APIView):
                     defaults={'is_active': True}
                 )
                 sessions_count, meals_count, blocks_count = create_sessions_for_user(user, matching_program)
+                message = _("Profile updated successfully. Program reinitialized.")
+                if new_goal and new_goal != old_goal:
+                    message = _("Profile updated successfully. Program reinitialized due to goal change.")
                 return Response(
                     {
-                        "message": _("Profile updated successfully. Program reinitialized due to goal change."),
+                        "message": message,
                         "sessions_created": sessions_count,
                         "meals_created": meals_count,
                         "blocks_created": blocks_count
                     },
                     status=status.HTTP_200_OK
                 )
+
             return Response(
                 {"message": _("Profile updated successfully.")},
                 status=status.HTTP_200_OK
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class LoginView(APIView):
     permission_classes = [AllowAny]

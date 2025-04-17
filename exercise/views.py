@@ -413,17 +413,31 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         return ExerciseBlockListSerializer  # fallback
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser or user.is_staff:
-            return ExerciseBlock.objects.all()
-
-        from users_app.models import UserProgram, SessionCompletion
-        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-        if not user_program or not user_program.is_subscription_active():
+        if getattr(self, 'swagger_fake_view', False):
             return ExerciseBlock.objects.none()
 
-        user_sessions = SessionCompletion.objects.filter(user=user).values_list('session_id', flat=True)
-        return ExerciseBlock.objects.filter(session__id__in=user_sessions).distinct()
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return ExerciseBlock.objects.all()
+
+        user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+        if not user_program:
+            return ExerciseBlock.objects.none()
+
+        # Add subscription check
+        has_active_subscription = UserSubscription.objects.filter(
+            user=user,
+            is_active=True,
+            end_date__gte=timezone.now().date()
+        ).exists()
+
+        if not has_active_subscription:
+            return ExerciseBlock.objects.none()
+
+        return ExerciseBlock.objects.filter(
+            sessions__program=user_program.program
+        ).distinct()
+
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -434,18 +448,80 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
         return context
 
     @swagger_auto_schema(
-        operation_description="List ExerciseBlocks",
-        responses={200: ExerciseBlockListSerializer(many=True)}
+        operation_description="List all accessible exercise blocks (subscription required for non-admins)",
+        responses={
+            200: ExerciseBlockSerializer(many=True),
+            403: openapi.Response(
+                description="Subscription expired",
+                examples={
+                    "application/json": {
+                        "error": "Please upgrade your subscription to access exercise blocks.",
+                        "subscription_options_url": "https://owntrainer.uz/api/subscriptions/options/"
+                    }
+                }
+            )
+        }
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.get_queryset()
+
+        # Return custom error message if queryset is empty due to subscription
+        if not queryset.exists() and not (request.user.is_staff or request.user.is_superuser):
+            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+            if user_program:
+                has_active_subscription = UserSubscription.objects.filter(
+                    user=request.user,
+                    is_active=True,
+                    end_date__gte=timezone.now().date()
+                ).exists()
+                if not has_active_subscription:
+                    return Response({
+                        "error": _("Please upgrade your subscription to access exercise blocks."),
+                        "subscription_options_url": "https://owntrainer.uz/api/subscriptions/options/"
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @swagger_auto_schema(
-        operation_description="Retrieve a single ExerciseBlock",
-        responses={200: ExerciseBlockDetailSerializer()}
+        operation_description="Retrieve a specific exercise block (subscription required for non-admins)",
+        responses={
+            200: ExerciseBlockSerializer(),
+            403: openapi.Response(
+                description="Subscription expired",
+                examples={
+                    "application/json": {
+                        "error": "Please upgrade your subscription to access exercise blocks.",
+                        "subscription_options_url": "https://owntrainer.uz/api/subscriptions/options/"
+                    }
+                }
+            ),
+            404: openapi.Response(description="Exercise block not found")
+        }
     )
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        instance = self.get_object()  # This uses get_queryset
+        if not instance and not (request.user.is_staff or request.user.is_superuser):
+            user_program = UserProgram.objects.filter(user=request.user, is_active=True).first()
+            if user_program:
+                has_active_subscription = UserSubscription.objects.filter(
+                    user=request.user,
+                    is_active=True,
+                    end_date__gte=timezone.now().date()
+                ).exists()
+                if not has_active_subscription:
+                    return Response({
+                        "error": _("Please upgrade your subscription to access exercise blocks."),
+                        "subscription_options_url": "https://owntrainer.uz/api/subscriptions/options/"
+                    }, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     @swagger_auto_schema(
         operation_description="Create an ExerciseBlock (JSON-only). No block_image here.",
@@ -643,10 +719,10 @@ class CompleteBlockView(APIView):
         block = get_object_or_404(ExerciseBlock.objects.select_related('session'), id=block_id)
         session = block.session  # OneToOne
 
-        # Check if all exercises in the block match the user's goal
-        mismatched_exercises = block.exercises.filter(~Q(exercise_type=request.user.goal))
-        if mismatched_exercises.exists():
-            return Response({"error": _("This block contains exercises that do not match your goal.")}, status=400)
+        # # Check if all exercises in the block match the user's goal
+        # mismatched_exercises = block.exercises.filter(~Q(exercise_type=request.user.goal))
+        # if mismatched_exercises.exists():
+        #     return Response({"error": _("This block contains exercises that do not match your goal.")}, status=400)
 
         # Mark the block as completed for this user
         bc, created = block.completions.get_or_create(user=request.user)
