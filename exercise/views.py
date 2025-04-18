@@ -435,7 +435,7 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             return ExerciseBlock.objects.none()
 
         return ExerciseBlock.objects.filter(
-            sessions__program=user_program.program
+            session__program=user_program.program
         ).distinct()
 
 
