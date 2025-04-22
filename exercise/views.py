@@ -46,10 +46,10 @@ class ProgramViewSet(viewsets.ModelViewSet):
             return context
 
         def get_queryset(self):
-            if self.request.user.is_superuser:
+            # if self.request.user.is_superuser:
                 return Program.objects.all()
-            user_goal = getattr(self.request.user, 'goal', None)
-            return Program.objects.filter(is_active=True, program_goal=user_goal)
+            # user_goal = getattr(self.request.user, 'goal', None)
+            # return Program.objects.filter(is_active=True, program_goal=user_goal)
 
         @swagger_auto_schema(
             tags=['Programs'],
