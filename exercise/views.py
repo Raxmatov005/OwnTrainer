@@ -215,13 +215,14 @@ class SessionViewSet(viewsets.ModelViewSet):
             session.delete()
             return Response({"message": _("Session deleted successfully")}, status=status.HTTP_204_NO_CONTENT)
 
-        @swagger_auto_schema(tags=['Sessions'], operation_description=_("List sessions for the user. Staff sees all sessions."))
+        @swagger_auto_schema(tags=['Sessions'],
+                             operation_description=_("List sessions for the user. Staff sees all sessions."))
         def list(self, request):
             """
             - Admins: Get all sessions.
-            - Users: Get only incomplete sessions from their assigned program.
+            - Users: Get only incomplete sessions from their assigned program, with daily unlock logic.
             """
-            from users_app.models import UserProgram
+            from users_app.models import UserProgram, SessionCompletion
 
             # 🔹 If user is an admin, return all sessions
             if request.user.is_superuser or request.user.is_staff:
@@ -244,14 +245,38 @@ class SessionViewSet(viewsets.ModelViewSet):
             if not incomplete_sc.exists():
                 return Response({"message": _("You have completed all sessions!")}, status=200)
 
-            # 🔹 Get next session number
-            next_sc = incomplete_sc.first()
-            next_session_number = next_sc.session.session_number
+            # 🔹 Determine the next session number to unlock based on daily progression
+            today = timezone.now().date()
+
+            # Get the last completed session
+            last_completed = SessionCompletion.objects.filter(
+                user=request.user,
+                is_completed=True,
+                session__program=user_program.program
+            ).order_by('-session__session_number').first()
+
+            if not last_completed:
+                # No sessions completed yet, so the first incomplete session is unlocked
+                next_session_number = incomplete_sc.first().session.session_number
+            else:
+                # Check if today is at least the next day after the last completion
+                completion_date = last_completed.completion_date
+                next_day = completion_date + timedelta(days=1)
+                last_completed_number = last_completed.session.session_number
+
+                if today < next_day:
+                    # It's not yet the next day, so the next session remains locked
+                    # The next session number to unlock is the last completed + 1,
+                    # but we'll set the unlocked session number to the last completed
+                    next_session_number = last_completed_number
+                else:
+                    # It's the next day or later, so unlock the next session
+                    next_session_number = last_completed_number + 1
 
             # 🔹 Get all incomplete session IDs
             session_ids = [sc.session_id for sc in incomplete_sc]
 
-            # 🔹 Retrieve sessions and mark future ones as locked
+            # 🔹 Retrieve sessions and mark future ones as locked based on next_session_number
             sessions = Session.objects.filter(id__in=session_ids).order_by('session_number')
             data = [
                 {**self.get_serializer(s).data, "locked": (s.session_number > next_session_number)}
