@@ -1121,24 +1121,28 @@ class StatisticsView(APIView):
         return result
 
     def _get_day_info(self, user, date, include_calories=False):
-        sessions_this_day = SessionCompletion.objects.filter(
+        # Check for completed blocks directly, instead of relying on SessionCompletion
+        blocks_this_day = ExerciseBlockCompletion.objects.filter(
             user=user,
             is_completed=True,
             completion_date=date,
-            session__block__exercises__exercise_type=user.goal
+            block__session__block__exercises__exercise_type=user.goal
         ).distinct()
 
-        session_complete = sessions_this_day.exists()
+        # Consider the session "complete" for statistics purposes if the block is completed
+        session_complete = blocks_this_day.exists()
         day_info = {"session_complete": session_complete}
 
         if include_calories:
-            total_burned = SessionCompletion.objects.filter(
+            # Calculate calories burned from completed blocks
+            total_burned = ExerciseBlockCompletion.objects.filter(
                 user=user,
                 completion_date=date,
                 is_completed=True,
-                session__block__exercises__exercise_type=user.goal
-            ).aggregate(Sum('session__block__calories_burned'))['session__block__calories_burned__sum'] or 0.0
+                block__session__block__exercises__exercise_type=user.goal
+            ).aggregate(Sum('block__calories_burned'))['block__calories_burned__sum'] or 0.0
 
+            # Calories gained from meals (unchanged)
             total_gained = MealCompletion.objects.filter(
                 user=user,
                 completion_date=date,
