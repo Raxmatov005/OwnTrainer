@@ -45,6 +45,7 @@ class ProgramViewSet(viewsets.ModelViewSet):
                 context['language'] = self.request.query_params.get('lang', 'en')
             return context
 
+
         def get_queryset(self):
             # if self.request.user.is_superuser:
                 return Program.objects.all()
