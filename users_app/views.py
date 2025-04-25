@@ -382,7 +382,7 @@ class VerifyCodeView(APIView):
 
         # Check if the code has expired
         code_timestamp = datetime.fromtimestamp(cached_data['timestamp'])
-        if datetime.now() - code_timestamp > timedelta(minutes=10):  # Adjust expiration time if needed
+        if datetime.now() - code_timestamp > timedelta(days=30):  # Adjust expiration time if needed
             return Response(
                 {"error": _("Verification code expired.")},
                 status=status.HTTP_400_BAD_REQUEST
