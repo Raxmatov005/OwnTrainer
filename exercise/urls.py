@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from exercise.views import (ProgramViewSet, SessionViewSet,
                             ExerciseViewSet,UserProgramViewSet,
                             CompleteBlockView,StatisticsView,
-                            ExerciseBlockViewSet)
+                            ExerciseBlockViewSet, WeeklyCaloriesView)
 
 from django.conf import settings
 from django.conf.urls.static import static
@@ -20,6 +20,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path("api/block-complete/", CompleteBlockView.as_view(), name="complete-block"),
     path('api/user/statistics/', StatisticsView.as_view(), name='user-progress'),
+    path('api/weekly-calories/', WeeklyCaloriesView.as_view(), name='weekly_calories'),
 ]
 
 

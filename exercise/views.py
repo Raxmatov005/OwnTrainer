@@ -1180,3 +1180,100 @@ class StatisticsView(APIView):
             day_info["calories_gained"] = float(total_gained)
 
         return day_info
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from datetime import datetime, timedelta
+from django.db.models import Sum
+from dateutil import parser as date_parser
+
+class WeeklyCaloriesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Returns calorie statistics for a month, divided into four weeks, with total calories burned and gained per week.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                "date": openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    format="date",
+                    description="Specify a date in the month (format: YYYY-MM-DD)"
+                ),
+            },
+            required=["date"],
+        ),
+        responses={200: "Success", 400: "Invalid request"},
+    )
+    def post(self, request):
+        date_str = request.data.get("date")  # "YYYY-MM-DD"
+
+        # Parse date
+        try:
+            date = date_parser.isoparse(date_str).date()
+        except (TypeError, ValueError):
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
+
+        result = self.get_monthly_weekly_calories(request.user, date)
+        return Response(result, status=200)
+
+    def get_monthly_weekly_calories(self, user, date):
+        """
+        Return a dict with four keys (week_1, week_2, week_3, week_4), each containing
+        total calories burned and gained for that week in the month.
+        Example:
+        {
+          "week_1": {
+            "total_calories_burned": 1200.0,
+            "calories_gained": 5600.0
+          },
+          "week_2": {
+            "total_calories_burned": 1100.0,
+            "calories_gained": 5400.0
+          },
+          ...
+        }
+        """
+        # First day of the month
+        start_date = date.replace(day=1)
+
+        # Compute last day of the month
+        next_month = (start_date.replace(day=28) + timedelta(days=4))
+        last_day = (next_month - timedelta(days=next_month.day)).day
+        end_date = start_date.replace(day=last_day)
+
+        # Divide month into roughly 4 weeks (7-day periods, may not align with calendar weeks)
+        week_length = (end_date - start_date).days // 4 + 1
+        result = {}
+
+        for week in range(4):
+            week_start = start_date + timedelta(days=week * week_length)
+            week_end = min(week_start + timedelta(days=week_length - 1), end_date)
+
+            # Calculate calories for the week
+            total_burned = ExerciseBlockCompletion.objects.filter(
+                user=user,
+                completion_date__range=[week_start, week_end],
+                is_completed=True,
+                block__session__block__exercises__exercise_type=user.goal
+            ).aggregate(Sum('block__calories_burned'))['block__calories_burned__sum'] or 0.0
+
+            total_gained = MealCompletion.objects.filter(
+                user=user,
+                completion_date__range=[week_start, week_end],
+                is_completed=True,
+                meal__goal_type=user.goal
+            ).aggregate(Sum('meal__calories'))['meal__calories__sum'] or 0.0
+
+            result[f"week_{week + 1}"] = {
+                "total_calories_burned": float(total_burned),
+                "calories_gained": float(total_gained)
+            }
+
+        return result
