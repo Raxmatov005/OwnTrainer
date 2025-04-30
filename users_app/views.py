@@ -867,3 +867,26 @@ class SubscriptionOptionsAPIView(APIView):
         Returns a list of available subscription plans with prices and duration.
         """
         return Response({"subscriptions": SUBSCRIPTION_OPTIONS})
+
+
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.response import Response
+from rest_framework import status
+
+
+class CustomTokenRefreshView(TokenRefreshView):
+    def post(self, request, *args, **kwargs):
+        # Call the parent class's post method to handle the token refresh
+        response = super().post(request, *args, **kwargs)
+
+        # If the response is successful, include the refresh token
+        if response.status_code == status.HTTP_200_OK:
+            # Get the refresh token from the request data
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                # Optionally, you can generate a new refresh token here if needed
+                # For now, we'll return the same refresh token
+                response.data['refresh'] = refresh_token
+
+        return response
