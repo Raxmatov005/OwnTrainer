@@ -50,8 +50,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except Exception as e:
             return response.CheckPerformTransaction(
                 allow=False,
-                reason=-31008,
-                message=str(e)
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
@@ -83,6 +81,14 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Render a form for selecting subscription_type and payment_method
+        return Response({
+            "message": "Please select subscription type and payment method",
+            "subscription_types": list(SUBSCRIPTION_COSTS.keys()),
+            "payment_methods": ["click", "payme"]
+        })
 
     def post(self, request):
         payment_method = request.data.get("payment_method")
