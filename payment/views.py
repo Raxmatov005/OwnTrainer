@@ -32,9 +32,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             if amount != expected_amount:
                 return response.CheckPerformTransaction(
                     allow=False,
-                    reason=-31001,
-                    message="Неверная сумма",
-                    data="amount"
                 ).as_resp()
 
             return response.CheckPerformTransaction(allow=True).as_resp()
