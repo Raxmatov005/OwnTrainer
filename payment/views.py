@@ -9,6 +9,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from click_app.views import SUBSCRIPTION_COSTS, PyClick
 from .utils import generate_payme_docs_style_url
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 # Subscription duration mapping
 SUBSCRIPTION_DAYS = {
