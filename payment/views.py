@@ -9,8 +9,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from click_app.views import SUBSCRIPTION_COSTS, PyClick
 from .utils import generate_payme_docs_style_url
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+
 
 # Subscription duration mapping
 SUBSCRIPTION_DAYS = {
@@ -80,68 +79,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        operation_description="Webhook endpoint for Payme and Click payment callbacks",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                # Payme webhook fields
-                'method': openapi.Schema(type=openapi.TYPE_STRING,
-                                         description="Payme method (e.g., CheckPerformTransaction)"),
-                'params': openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'id': openapi.Schema(type=openapi.TYPE_STRING, description="Transaction ID"),
-                        'amount': openapi.Schema(type=openapi.TYPE_INTEGER, description="Amount in tiyins"),
-                        'account': openapi.Schema(
-                            type=openapi.TYPE_OBJECT,
-                            properties={
-                                'id': openapi.Schema(type=openapi.TYPE_INTEGER, description="Subscription ID")
-                            }
-                        )
-                    }
-                ),
-                # Click webhook fields
-                'click_trans_id': openapi.Schema(type=openapi.TYPE_STRING, description="Click transaction ID"),
-                'merchant_trans_id': openapi.Schema(type=openapi.TYPE_STRING,
-                                                    description="Merchant transaction ID (order ID)"),
-                'amount': openapi.Schema(type=openapi.TYPE_STRING, description="Amount in so'm"),
-                'method': openapi.Schema(type=openapi.TYPE_STRING,
-                                         description="Click method (e.g., prepare, complete)"),
-            },
-            description="Request body can be either a Payme webhook payload or a Click webhook payload."
-        ),
-        responses={
-            200: openapi.Response(
-                description="Successful response",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'error': openapi.Schema(type=openapi.TYPE_INTEGER, description="Error code (0 for success)"),
-                        'status': openapi.Schema(type=openapi.TYPE_STRING, description="Status (e.g., success)")
-                    }
-                )
-            ),
-            400: openapi.Response(
-                description="Error response",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'error': openapi.Schema(
-                            type=openapi.TYPE_OBJECT,
-                            properties={
-                                'code': openapi.Schema(type=openapi.TYPE_INTEGER, description="Error code"),
-                                'message': openapi.Schema(type=openapi.TYPE_OBJECT,
-                                                          description="Error message in multiple languages"),
-                                'data': openapi.Schema(type=openapi.TYPE_STRING, description="Additional error data")
-                            }
-                        )
-                    }
-                )
-            )
-        }
-    )
 
     def post(self, request):
         payment_method = request.data.get("payment_method")
