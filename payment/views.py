@@ -28,8 +28,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         try:
             subscription = UserSubscription.objects.get(id=params.get('account', {}).get('id'))
             amount = int(params.get('amount'))
-            expected_amount = SUBSCRIPTION_COSTS[subscription.subscription_type] * 100
+            expected_amount = subscription.amount
 
+            logger.info(
+                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}")
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
@@ -78,7 +80,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
 
-class UnifiedPaymentInitView(APIView):
+class UnifiedPaymentInitView(ApiView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -93,15 +95,16 @@ class UnifiedPaymentInitView(APIView):
 
         user = request.user
         amount = SUBSCRIPTION_COSTS[subscription_type]
+        logger.info(f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-        # Update or create subscription object
         subscription, _ = UserSubscription.objects.get_or_create(
             user=user,
             is_active=True,
-            defaults={"subscription_type": subscription_type}
+            defaults={"subscription_type": subscription_type, "amount_in_soum": amount}
         )
         subscription.subscription_type = subscription_type
-        subscription.is_active = False  # Set to True only after successful payment
+        subscription.amount_in_soum = amount
+        subscription.is_active = False
         subscription.save()
 
         if payment_method == "click":
@@ -111,13 +114,15 @@ class UnifiedPaymentInitView(APIView):
                 amount=str(amount),
                 return_url=return_url
             )
+            logger.info(f"Click redirect URL: {pay_url}")
             return Response({"redirect_url": pay_url})
 
         elif payment_method == "payme":
             payme_url = generate_payme_docs_style_url(
                 subscription_type=subscription_type,
-                user_program_id=subscription.id  # Use subscription.id instead of user_program_id
+                user_program_id=subscription.id
             )
+            logger.info(f"Payme redirect URL: {payme_url}")
             return Response({"redirect_url": payme_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)

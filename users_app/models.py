@@ -160,18 +160,18 @@ class Program(models.Model):
 
 
 
-
-
-
 class UserSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
     subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
     start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    amount_in_soum = models.IntegerField(null=True, blank=True)  # Store the amount at creation time
 
     @property
     def amount(self):
+        if self.amount_in_soum is not None:
+            return self.amount_in_soum * 100  # Convert to tiyins
         from click_app.views import SUBSCRIPTION_COSTS
         return SUBSCRIPTION_COSTS.get(self.subscription_type, 0) * 100
 
