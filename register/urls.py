@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from payment.views import PaymeCallBackAPIView, UnifiedPaymentInitView
 from django.contrib import admin
 from users_app.views import CustomTokenRefreshView
-from click_app.views import HealthCheckView
+from click_app.views import HealthCheckAPIView
 
 schema_view = get_schema_view(
     openapi.Info(
