@@ -13,7 +13,7 @@ import logging
 
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
-    'month': 10000,
+    'month': 1000,
     'quarter': 25000,
     'year': 90000
 }
@@ -108,3 +108,16 @@ class OrderCheckAndPayment(PyClick):
 
 class OrderTestView(PyClickMerchantAPIView):
     VALIDATE_CLASS = OrderCheckAndPayment
+
+    def post(self, request, *args, **kwargs):
+        logger.info(f"Click webhook payload: {request.body}")
+        method = request.data.get("method")
+        if not method:
+            logger.error("Click webhook missing 'method' field")
+            return Response({
+                "error": {
+                    "code": -32500,
+                    "message": {"en": "Missing method"}
+                }
+            }, status=400)
+        return super().post(request, *args, **kwargs)
