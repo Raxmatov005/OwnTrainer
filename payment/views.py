@@ -95,19 +95,32 @@ class UnifiedPaymentInitView(APIView):
 
         user = request.user
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        logger.info(f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+        logger.info(
+            f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-        subscription, _ = UserSubscription.objects.get_or_create(
+        subscription, created = UserSubscription.objects.get_or_create(
             user=user,
             is_active=True,
             defaults={"subscription_type": subscription_type, "amount_in_soum": amount}
         )
+        # Debug and enforce consistency
+        if subscription.amount_in_soum != amount:
+            logger.warning(
+                f"Consistency check failed: amount_in_soum was {subscription.amount_in_soum}, setting to {amount}")
         subscription.subscription_type = subscription_type
         subscription.amount_in_soum = amount
         subscription.is_active = False
         subscription.save()
 
-        if payment_method == "click":
+        if payment_method == "payme":
+            payme_url = generate_payme_docs_style_url(
+                subscription_type=subscription_type,
+                user_program_id=subscription.id
+            )
+            logger.info(f"Payme redirect URL: {payme_url}")
+            return Response({"redirect_url": payme_url})
+
+        elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
             pay_url = PyClick.generate_url(
                 order_id=subscription.id,
@@ -116,13 +129,5 @@ class UnifiedPaymentInitView(APIView):
             )
             logger.info(f"Click redirect URL: {pay_url}")
             return Response({"redirect_url": pay_url})
-
-        elif payment_method == "payme":
-            payme_url = generate_payme_docs_style_url(
-                subscription_type=subscription_type,
-                user_program_id=subscription.id
-            )
-            logger.info(f"Payme redirect URL: {payme_url}")
-            return Response({"redirect_url": payme_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)
