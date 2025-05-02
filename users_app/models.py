@@ -170,6 +170,11 @@ class UserSubscription(models.Model):
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
+    @property
+    def amount(self):
+        from click_app.views import SUBSCRIPTION_COSTS
+        return SUBSCRIPTION_COSTS.get(self.subscription_type, 0) * 100
+
     def save(self, *args, **kwargs):
         # Convert start_date to datetime.date if it's a datetime.datetime
         if isinstance(self.start_date, datetime):

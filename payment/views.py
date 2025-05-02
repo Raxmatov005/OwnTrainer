@@ -18,39 +18,42 @@ SUBSCRIPTION_DAYS = {
     'year': 365
 }
 
-class PaymeCallBackAPIView(PaymeWebHookAPIView):
-    """
-    Handles Payme Webhook API calls for subscription.
-    """
+import logging
 
+logger = logging.getLogger(__name__)
+
+class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
+        logger.info(f"Payme check_perform_transaction params: {params}")
         try:
             subscription = UserSubscription.objects.get(id=params.get('account', {}).get('id'))
-            amount = int(params.get('amount'))  # Amount in tiyins from Payme
-            expected_amount = SUBSCRIPTION_COSTS[subscription.subscription_type] * 100  # Convert to tiyins
+            amount = int(params.get('amount'))
+            expected_amount = SUBSCRIPTION_COSTS[subscription.subscription_type] * 100
 
             if amount != expected_amount:
-                print(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+                logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
                     allow=False,
                 ).as_resp()
 
+            logger.info("Transaction allowed")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
+            logger.error("Invalid subscription ID")
             return response.CheckPerformTransaction(
                 allow=False,
                 reason=-31050,
                 message="Invalid subscription ID",
                 data="account[id]"
             ).as_resp()
-
         except Exception as e:
-            print(f"Error in check_perform_transaction: {str(e)}")
+            logger.error(f"Error in check_perform_transaction: {str(e)}")
             return response.CheckPerformTransaction(
                 allow=False,
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
+        logger.info(f"Payme handle_successfully_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
         subscription_id = transaction.account.id
         try:
@@ -59,23 +62,21 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
             subscription.extend_subscription(add_days)
             subscription.save()
-            print(f"✅ Payment successful for subscription ID: {subscription_id}")
+            logger.info(f"✅ Payment successful for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
-            print(f"❌ No subscription found with ID: {subscription_id}")
+            logger.error(f"❌ No subscription found with ID: {subscription_id}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
-        """
-        Handles canceled payments by ensuring the subscription remains unaffected.
-        """
+        logger.info(f"Payme handle_cancelled_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
         subscription_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
             subscription.is_active = False
             subscription.save()
-            print(f"✅ Cancelled payment for subscription ID: {subscription_id}")
+            logger.info(f"✅ Cancelled payment for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
-            print(f"❌ No subscription found with ID: {subscription_id}")
+            logger.error(f"❌ No subscription found with ID: {subscription_id}")
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
