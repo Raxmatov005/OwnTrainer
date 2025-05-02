@@ -25,18 +25,17 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
     def check_perform_transaction(self, params):
         try:
-            # Fetch UserSubscription instead of UserProgram
             subscription = UserSubscription.objects.get(id=params.get('account', {}).get('id'))
-            amount = int(params.get('amount'))
-            expected_amount = SUBSCRIPTION_COSTS[subscription.subscription_type]
+            amount = int(params.get('amount'))  # Amount in tiyins from Payme
+            expected_amount = SUBSCRIPTION_COSTS[subscription.subscription_type] * 100  # Convert to tiyins
 
             if amount != expected_amount:
+                print(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
                     allow=False,
                 ).as_resp()
 
             return response.CheckPerformTransaction(allow=True).as_resp()
-
         except UserSubscription.DoesNotExist:
             return response.CheckPerformTransaction(
                 allow=False,
@@ -46,6 +45,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             ).as_resp()
 
         except Exception as e:
+            print(f"Error in check_perform_transaction: {str(e)}")
             return response.CheckPerformTransaction(
                 allow=False,
             ).as_resp()

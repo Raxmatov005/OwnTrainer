@@ -12,6 +12,7 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
     """
     payme_id = settings.PAYME_ID
     cost_in_soum = SUBSCRIPTION_COSTS[subscription_type]
+    callback_timeout = 600000
     cost_in_tiyin = cost_in_soum * 100
 
     # Build the raw semicolon-separated params, e.g. "m=...;ac.id=...;a=..."
@@ -20,6 +21,8 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
         f"ac.id={user_program_id};"
         f"ac.sub_type={subscription_type};"  # optional if you want to pass sub_type
         f"a={cost_in_tiyin}"
+        f"ct={callback_timeout};"
+
     )
 
     # Actually Base64-encode that string
