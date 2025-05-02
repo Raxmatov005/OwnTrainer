@@ -80,7 +80,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
 
-class UnifiedPaymentInitView(ApiView):
+class UnifiedPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
