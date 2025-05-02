@@ -135,36 +135,38 @@ class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        logger.info(f"Click Prepare request: {request.data}")
+        logger.info(f"Click Prepare request received: {request.data}")
         try:
             order_id = request.data.get("order_id")
             amount = int(request.data.get("amount"))
-            merchant_id = request.data.get("merchant_id")  # Add merchant_id from request
-            service_id = request.data.get("service_id")   # Add service_id from request
+            merchant_id = request.data.get("merchant_id")
+            service_id = request.data.get("service_id")
 
-            if not order_id or not amount or not merchant_id or not service_id:
-                logger.error("Missing required parameters in Prepare request")
-                return Response({"error": -1})
+            if not all([order_id, amount, merchant_id, service_id]):
+                logger.error(f"Missing required parameters: {request.data}")
+                return Response({"error": -1}, status=400)
 
             subscription = UserSubscription.objects.get(id=order_id)
             expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                return Response({"error": -1})
+                return Response({"error": -1}, status=400)
 
-            # Additional validation (e.g., check merchant_id against your config)
             if merchant_id != "9988*":  # Replace with your actual merchant ID
                 logger.error(f"Invalid merchant_id: {merchant_id}")
-                return Response({"error": -1})
+                return Response({"error": -1}, status=400)
 
-            logger.info("Prepare request validated successfully")
-            return Response({"error": 0})
+            logger.info(f"Prepare request validated successfully for order_id {order_id}")
+            return Response({"error": 0}, status=200)
         except UserSubscription.DoesNotExist:
             logger.error(f"Subscription not found for order_id: {order_id}")
-            return Response({"error": -1})
+            return Response({"error": -1}, status=404)
+        except ValueError as e:
+            logger.error(f"Invalid amount format: {e}, data: {request.data}")
+            return Response({"error": -1}, status=400)
         except Exception as e:
-            logger.error(f"Error in Click Prepare: {str(e)}")
-            return Response({"error": -1})
+            logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}")
+            return Response({"error": -1}, status=500)
 
 
 class ClickCompleteAPIView(APIView):
@@ -204,3 +206,10 @@ class ClickCompleteAPIView(APIView):
         except Exception as e:
             logger.error(f"Error in Click Complete: {str(e)}")
             return Response({"error": -1})
+
+
+class HealthCheckAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({"status": "ok"}, status=200)

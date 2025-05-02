@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from payment.views import PaymeCallBackAPIView, UnifiedPaymentInitView
 from django.contrib import admin
 from users_app.views import CustomTokenRefreshView
-
+from click_app.views import HealthCheckView
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -39,5 +39,6 @@ urlpatterns = [
     path("payment/update/", PaymeCallBackAPIView.as_view()),
     path('init/', UnifiedPaymentInitView.as_view(), name='payment-init'),
     path('', include('click_app.urls')),
+    path('health/', HealthCheckAPIView.as_view(), name='health-check'),
 ]
 
