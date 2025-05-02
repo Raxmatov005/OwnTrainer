@@ -123,11 +123,13 @@ class UnifiedPaymentInitView(APIView):
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
             pay_url = PyClick.generate_url(
-                order_id=subscription.id,
+                order_id=str(subscription.id),
                 amount=str(amount),
-                return_url=return_url
+                return_url=return_url,
+                merchant_id="9988*",  # Replace with your merchant ID
+                service_id="39247"  # Replace with your service ID
             )
-            logger.info(f"Click redirect URL: {pay_url}")
+            logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}")
             return Response({"redirect_url": pay_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)

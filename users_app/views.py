@@ -433,9 +433,10 @@ class CompleteProfileView(APIView):
         return serializer
 
     def get_queryset(self):
-        """ Needed for schema generation """
+        """ Needed for schema generation, return empty queryset if user is anonymous """
+        if not self.request.user.is_authenticated:
+            return Program.objects.none()  # Return empty queryset for anonymous users
         return Program.objects.values_list('program_goal', flat=True)
-
     @swagger_auto_schema(
         operation_description="Complete the user profile with additional details",
         consumes=['multipart/form-data'],

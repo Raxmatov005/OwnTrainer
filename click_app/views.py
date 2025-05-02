@@ -11,6 +11,8 @@ from datetime import timedelta
 from .serializers import ClickOrderSerializer
 import logging
 
+
+
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 1000,
@@ -22,6 +24,10 @@ SUBSCRIPTION_DAYS = {
     'quarter': 90,
     'year': 365
 }
+
+
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +127,80 @@ class OrderTestView(PyClickMerchantAPIView):
                 }
             }, status=400)
         return super().post(request, *args, **kwargs)
+
+
+
+
+class ClickPrepareAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        logger.info(f"Click Prepare request: {request.data}")
+        try:
+            order_id = request.data.get("order_id")
+            amount = int(request.data.get("amount"))
+            merchant_id = request.data.get("merchant_id")  # Add merchant_id from request
+            service_id = request.data.get("service_id")   # Add service_id from request
+
+            if not order_id or not amount or not merchant_id or not service_id:
+                logger.error("Missing required parameters in Prepare request")
+                return Response({"error": -1})
+
+            subscription = UserSubscription.objects.get(id=order_id)
+            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+            if amount != expected_amount:
+                logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+                return Response({"error": -1})
+
+            # Additional validation (e.g., check merchant_id against your config)
+            if merchant_id != "9988*":  # Replace with your actual merchant ID
+                logger.error(f"Invalid merchant_id: {merchant_id}")
+                return Response({"error": -1})
+
+            logger.info("Prepare request validated successfully")
+            return Response({"error": 0})
+        except UserSubscription.DoesNotExist:
+            logger.error(f"Subscription not found for order_id: {order_id}")
+            return Response({"error": -1})
+        except Exception as e:
+            logger.error(f"Error in Click Prepare: {str(e)}")
+            return Response({"error": -1})
+
+
+class ClickCompleteAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        logger.info(f"Click Complete request: {request.data}")
+        try:
+            order_id = request.data.get("order_id")
+            amount = int(request.data.get("amount"))
+            status = request.data.get("state")  # Use 'state' instead of 'status' per Click docs
+
+            subscription = UserSubscription.objects.get(id=order_id)
+            expected_amount = subscription.amount_in_soum * 100
+            if amount != expected_amount:
+                logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+                return Response({"error": -1})
+
+            if status == "1":  # Success status (confirm with Click docs)
+                subscription.is_active = True
+                add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
+                subscription.extend_subscription(add_days)
+                subscription.save()
+                logger.info(f"Click payment successful for subscription: {subscription.id}")
+            elif status == "0":  # Failed status
+                subscription.is_active = False
+                subscription.save()
+                logger.info(f"Click payment failed for subscription: {subscription.id}")
+            else:
+                logger.warning(f"Unknown state: {status}")
+                return Response({"error": -1})
+
+            return Response({"error": 0})
+        except UserSubscription.DoesNotExist:
+            logger.error(f"Subscription not found for order_id: {order_id}")
+            return Response({"error": -1})
+        except Exception as e:
+            logger.error(f"Error in Click Complete: {str(e)}")
+            return Response({"error": -1})
