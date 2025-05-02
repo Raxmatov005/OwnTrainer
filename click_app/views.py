@@ -152,7 +152,7 @@ class ClickPrepareAPIView(APIView):
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return Response({"error": -1}, status=400)
 
-            if merchant_id != "9988*":  # Replace with your actual merchant ID
+            if merchant_id != "31383":  # Replace with your actual merchant ID
                 logger.error(f"Invalid merchant_id: {merchant_id}")
                 return Response({"error": -1}, status=400)
 
