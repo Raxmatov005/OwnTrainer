@@ -216,7 +216,7 @@ class ClickCompleteAPIView(APIView):
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"result": {"code": -1}}, status=500)
 
-class HealthCheckAPIView(ApiView):
+class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
