@@ -160,7 +160,7 @@ class ClickPrepareAPIView(APIView):
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
 
-class ClickCompleteAPIView(ApiView):
+class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
