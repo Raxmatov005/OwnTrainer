@@ -126,6 +126,7 @@ class OrderTestView(PyClickMerchantAPIView):
 
 
 
+
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -138,29 +139,25 @@ class ClickPrepareAPIView(APIView):
             merchant_id = request.data.get("merchant_id")
             service_id = request.data.get("service_id")
 
-            # Validate all required parameters are present
             if not all([order_id, amount, merchant_id, service_id]):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            # Access the first item from QueryDict (list)
             order_id = order_id[0]
             amount = amount[0]
             merchant_id = merchant_id[0]
             service_id = service_id[0]
 
-            # Convert amount to integer (Click sends amount in tiyins)
             try:
                 amount = int(amount)
             except ValueError:
                 logger.error(f"Invalid amount format: {amount}, data: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            # Fetch subscription
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                # Convert subscription amount to tiyins (assuming amount_in_soum is in UZS)
-                expected_amount = subscription.amount_in_soum * 100  # 1 UZS = 100 tiyins
+                expected_amount = subscription.amount_in_soum * 100  # Convert UZS to tiyins
+                logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"error": -1}, status=400)
@@ -168,15 +165,14 @@ class ClickPrepareAPIView(APIView):
                 logger.error(f"Subscription not found for order_id: {order_id}")
                 return Response({"error": -1}, status=404)
 
-            # Validate merchant_id
-            if merchant_id != "31383":  # Replace with your actual merchant ID
+            if merchant_id != "31383":
                 logger.error(f"Invalid merchant_id: {merchant_id}")
                 return Response({"error": -1}, status=400)
 
             logger.info(f"Prepare request validated successfully for order_id {order_id}")
             return Response({"error": 0}, status=200)
         except Exception as e:
-            logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}")
+            logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
 
 class ClickCompleteAPIView(APIView):
@@ -188,19 +184,16 @@ class ClickCompleteAPIView(APIView):
         try:
             order_id = request.data.get("order_id")
             amount = request.data.get("amount")
-            state = request.data.get("state")  # Use 'state' per Click docs
+            state = request.data.get("state")
 
-            # Validate all required parameters are present
             if not all([order_id, amount, state]):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"result": {"code": -1}}, status=400)
 
-            # Access the first item from QueryDict (list)
             order_id = order_id[0]
             amount = amount[0]
             state = state[0]
 
-            # Convert amount and state to integers
             try:
                 amount = int(amount)
                 state = int(state)
@@ -208,11 +201,10 @@ class ClickCompleteAPIView(APIView):
                 logger.error(f"Invalid amount or state format: amount={amount}, state={state}, data: {request.data}")
                 return Response({"result": {"code": -1}}, status=400)
 
-            # Fetch subscription
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                # Convert subscription amount to tiyins (assuming amount_in_soum is in UZS)
-                expected_amount = subscription.amount_in_soum * 100  # 1 UZS = 100 tiyins
+                expected_amount = subscription.amount_in_soum * 100  # Convert UZS to tiyins
+                logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"result": {"code": -1}}, status=400)
@@ -220,14 +212,13 @@ class ClickCompleteAPIView(APIView):
                 logger.error(f"Subscription not found for order_id: {order_id}")
                 return Response({"result": {"code": -1}}, status=404)
 
-            # Process payment status
-            if state == 1:  # Success status
+            if state == 1:
                 subscription.is_active = True
-                add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)  # Default to 30 days
+                add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
                 subscription.extend_subscription(add_days)
                 subscription.save()
                 logger.info(f"✅ Click payment successful for subscription ID: {order_id}")
-            elif state == 0:  # Failed status
+            elif state == 0:
                 subscription.is_active = False
                 subscription.save()
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}")
@@ -237,7 +228,7 @@ class ClickCompleteAPIView(APIView):
 
             return Response({"result": {"code": 0}}, status=200)
         except Exception as e:
-            logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}")
+            logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"result": {"code": -1}}, status=500)
 
 class HealthCheckAPIView(APIView):
