@@ -160,7 +160,7 @@ class ClickPrepareAPIView(APIView):
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
 
-class ClickCompleteAPIView(APIView):
+class ClickCompleteAPIView(ApiView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
@@ -216,7 +216,7 @@ class ClickCompleteAPIView(APIView):
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"result": {"code": -1}}, status=500)
 
-class HealthCheckAPIView(APIView):
+class HealthCheckAPIView(ApiView):
     permission_classes = [AllowAny]
 
     def get(self, request):
