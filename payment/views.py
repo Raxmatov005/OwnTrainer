@@ -84,6 +84,7 @@ class UnifiedPaymentInitView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        logger.info(f"User in /init/: {request.user}, Authenticated: {request.user.is_authenticated}")
         payment_method = request.data.get("payment_method")
         subscription_type = request.data.get("subscription_type")
 

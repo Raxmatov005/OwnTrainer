@@ -469,6 +469,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             return ExerciseBlock.objects.none()
 
         user = self.request.user
+        if not user.is_authenticated:
+            return ExerciseBlock.objects.none()
+
         if user.is_staff or user.is_superuser:
             return ExerciseBlock.objects.all()
 
@@ -637,21 +640,24 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Exercise.objects.none()
+
         user = self.request.user
+        if not user.is_authenticated:
+            return Exercise.objects.none()
+
         if user.is_superuser or user.is_staff:
             return Exercise.objects.all()
 
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-        if not user_program or not UserSubscription.objects.filter(
-                user=user, is_active=True, end_date__gte=timezone.now().date()
-        ).exists():
+        if not user_program or not user_program.is_subscription_active():
             return Exercise.objects.none()
 
         return Exercise.objects.filter(
             blocks__session__program=user_program.program,
             exercise_type=user.goal
         ).distinct()
-
 
 
     def get_serializer_context(self):
