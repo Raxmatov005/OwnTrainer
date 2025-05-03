@@ -171,7 +171,7 @@ class UserSubscription(models.Model):
     @property
     def amount(self):
         if self.amount_in_soum is not None:
-            return self.amount_in_soum  # Convert to tiyins
+            return self.amount_in_soum * 100  # Convert to tiyins
         from click_app.views import SUBSCRIPTION_COSTS
         return SUBSCRIPTION_COSTS.get(self.subscription_type, 0) * 100
 

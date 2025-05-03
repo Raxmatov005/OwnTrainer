@@ -111,7 +111,6 @@ class OrderTestView(PyClickMerchantAPIView):
                 }
             }, status=400)
         return super().post(request, *args, **kwargs)
-
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -128,20 +127,21 @@ class ClickPrepareAPIView(APIView):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            order_id = order_id[0]
-            amount = amount[0]
-            merchant_id = merchant_id[0]
-            service_id = service_id[0]
+            # Ensure we handle the first element if it's a list
+            order_id = order_id[0] if isinstance(order_id, list) else order_id
+            amount = amount[0] if isinstance(amount, list) else amount
+            merchant_id = merchant_id[0] if isinstance(merchant_id, list) else merchant_id
+            service_id = service_id[0] if isinstance(service_id, list) else service_id
 
             try:
-                amount = int(amount)
+                amount = int(amount)  # Amount should already be in tiyins
             except ValueError:
                 logger.error(f"Invalid amount format: {amount}, data: {request.data}")
                 return Response({"error": -1}, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert UZS to tiyins
+                expected_amount = subscription.amount_in_soum * 100  # Convert so'm to tiyins
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
@@ -160,7 +160,7 @@ class ClickPrepareAPIView(APIView):
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
 
-class ClickCompleteAPIView(APIView):
+class ClickCompleteAPIView(ApiView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
@@ -175,12 +175,13 @@ class ClickCompleteAPIView(APIView):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"result": {"code": -1}}, status=400)
 
-            order_id = order_id[0]
-            amount = amount[0]
-            state = state[0]
+            # Ensure we handle the first element if it's a list
+            order_id = order_id[0] if isinstance(order_id, list) else order_id
+            amount = amount[0] if isinstance(amount, list) else amount
+            state = state[0] if isinstance(state, list) else state
 
             try:
-                amount = int(amount)
+                amount = int(amount)  # Amount should already be in tiyins
                 state = int(state)
             except ValueError:
                 logger.error(f"Invalid amount or state format: amount={amount}, state={state}, data: {request.data}")
@@ -188,7 +189,7 @@ class ClickCompleteAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert UZS to tiyins
+                expected_amount = subscription.amount_in_soum * 100  # Convert so'm to tiyins
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
