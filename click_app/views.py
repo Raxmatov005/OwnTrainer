@@ -3,6 +3,7 @@ from django.shortcuts import redirect, get_object_or_404
 from rest_framework.generics import CreateAPIView
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from pyclick import PyClick
 from pyclick.views import PyClickMerchantAPIView
