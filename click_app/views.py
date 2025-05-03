@@ -125,6 +125,7 @@ class OrderTestView(PyClickMerchantAPIView):
 
 
 
+
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -158,7 +159,8 @@ class ClickPrepareAPIView(APIView):
             # Fetch subscription
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+                # Convert subscription amount to tiyins (assuming amount_in_soum is in UZS)
+                expected_amount = subscription.amount_in_soum * 100  # 1 UZS = 100 tiyins
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"error": -1}, status=400)
@@ -209,7 +211,8 @@ class ClickCompleteAPIView(APIView):
             # Fetch subscription
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+                # Convert subscription amount to tiyins (assuming amount_in_soum is in UZS)
+                expected_amount = subscription.amount_in_soum * 100  # 1 UZS = 100 tiyins
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"result": {"code": -1}}, status=400)
