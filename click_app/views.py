@@ -12,10 +12,6 @@ from datetime import timedelta
 from .serializers import ClickOrderSerializer
 import logging
 
-
-
-
-
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 1000,
@@ -27,10 +23,6 @@ SUBSCRIPTION_DAYS = {
     'quarter': 90,
     'year': 365
 }
-
-
-
-
 
 logger = logging.getLogger(__name__)
 
@@ -53,14 +45,15 @@ class CreateClickOrderView(CreateAPIView):
 
         user_subscription, created = UserSubscription.objects.get_or_create(
             user=user,
-            defaults={"subscription_type": subscription_type, "is_active": False}
+            defaults={"subscription_type": subscription_type, "is_active": False, "amount_in_soum": amount}
         )
         user_subscription.subscription_type = subscription_type
+        user_subscription.amount_in_soum = amount  # Ensure amount_in_soum is set correctly
         user_subscription.is_active = False
         user_subscription.save()
 
         return_url = 'https://owntrainer.uz/'
-        pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount), return_url=return_url)
+        pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount * 100), return_url=return_url)  # Convert UZS to tiyins
         return redirect(pay_url)
 
 class OrderCheckAndPayment(PyClick):
@@ -71,7 +64,7 @@ class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            if int(amount) == SUBSCRIPTION_COSTS[subscription.subscription_type]:
+            if int(amount) == subscription.amount_in_soum * 100:  # Compare with tiyins
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
         except UserSubscription.DoesNotExist:
@@ -94,16 +87,14 @@ class OrderCheckAndPayment(PyClick):
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         transaction = PyClick.get_by_transaction_id(transaction_id=params["id"])
-        user_subscription_id = transaction.order_id  # Use order_id instead of account.id
+        user_subscription_id = transaction.order_id
         try:
             user_subscription = UserSubscription.objects.get(id=user_subscription_id)
-            user_subscription.is_active = False  # Ensure subscription remains inactive
+            user_subscription.is_active = False
             user_subscription.save()
             logger.info(f"✅ Cancelled payment for subscription ID: {user_subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {user_subscription_id}")
-
-
 
 class OrderTestView(PyClickMerchantAPIView):
     VALIDATE_CLASS = OrderCheckAndPayment
@@ -120,12 +111,6 @@ class OrderTestView(PyClickMerchantAPIView):
                 }
             }, status=400)
         return super().post(request, *args, **kwargs)
-
-
-
-
-
-
 
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
