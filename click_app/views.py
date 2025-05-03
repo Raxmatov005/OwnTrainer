@@ -123,7 +123,7 @@ class OrderTestView(PyClickMerchantAPIView):
 
 
 
-x
+
 
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
