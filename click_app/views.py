@@ -123,6 +123,7 @@ class OrderTestView(PyClickMerchantAPIView):
 
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = [FormParser, MultiPartParser]
 
     def post(self, request):
         logger.info(f"Click Prepare request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
@@ -161,6 +162,7 @@ class ClickPrepareAPIView(APIView):
 
 class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = [FormParser, MultiPartParser]
 
     def post(self, request):
         logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
