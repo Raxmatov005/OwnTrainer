@@ -41,10 +41,7 @@ class CreateClickOrderView(CreateAPIView):
     def post(self, request, *args, **kwargs):
         subscription_type = request.data.get('subscription_type')
         if subscription_type not in SUBSCRIPTION_COSTS:
-            return Response(
-                {"error": "Invalid subscription_type. Must be month, quarter, or year."},
-                status=400
-            )
+            return Response({"error": "Invalid subscription_type. Must be month, quarter, or year."}, status=400)
         amount = SUBSCRIPTION_COSTS[subscription_type]
         add_days = SUBSCRIPTION_DAYS[subscription_type]
         user = request.user
@@ -52,16 +49,16 @@ class CreateClickOrderView(CreateAPIView):
             return Response({"error": "User must be logged in."}, status=401)
 
         user_subscription, created = UserSubscription.objects.get_or_create(
-            user=user, is_active=True, defaults={"subscription_type": subscription_type}
+            user=user,
+            defaults={"subscription_type": subscription_type, "is_active": False}
         )
         user_subscription.subscription_type = subscription_type
-        user_subscription.is_active = False  # Mark inactive until payment success
+        user_subscription.is_active = False
         user_subscription.save()
 
         return_url = 'https://owntrainer.uz/'
         pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount), return_url=return_url)
         return redirect(pay_url)
-
 
 class OrderCheckAndPayment(PyClick):
     """
@@ -78,24 +75,17 @@ class OrderCheckAndPayment(PyClick):
             return self.ORDER_NOT_FOUND
 
     def successfully_payment(self, order_id: str, transaction: object):
-        """
-        Called when Click confirms a successful payment.
-        """
         try:
             user_subscription = UserSubscription.objects.get(id=order_id)
             logger.info(f"✅ Payment received for user {user_subscription.user.email_or_phone}")
-
-            # Mark subscription as active and save it.
             user_subscription.is_active = True
             user_subscription.save()
-
             add_days = SUBSCRIPTION_DAYS[user_subscription.subscription_type]
             user_subscription.extend_subscription(add_days)
             logger.info(f"✅ Subscription extended for {user_subscription.user.email_or_phone} by {add_days} days")
-
-            # Create sessions for the user using the new unified flow.
             self.create_sessions_for_user(user_subscription.user)
-
+            # Confirm transaction with Click (example, adjust per Click API)
+            PyClick.confirm_transaction(transaction.transaction_id)
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {order_id}")
 

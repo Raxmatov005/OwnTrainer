@@ -175,21 +175,35 @@ class UserSubscription(models.Model):
         from click_app.views import SUBSCRIPTION_COSTS
         return SUBSCRIPTION_COSTS.get(self.subscription_type, 0) * 100
 
+    # def save(self, *args, **kwargs):
+    #     # Convert start_date to datetime.date if it's a datetime.datetime
+    #     if isinstance(self.start_date, datetime):
+    #         self.start_date = self.start_date.date()
+    #     if not self.end_date:
+    #         add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
+    #         self.end_date = self.start_date + timedelta(days=add_days)
+    #     # Convert end_date to datetime.date if it's a datetime.datetime
+    #     if isinstance(self.end_date, datetime):
+    #         self.end_date = self.end_date.date()
+    #     if self.end_date and self.end_date < timezone.now().date():
+    #         self.is_active = False
+    #         self.user.is_premium = False
+    #     else:
+    #         self.user.is_premium = True
+    #     self.user.save()
+    #     super().save(*args, **kwargs)
+
     def save(self, *args, **kwargs):
-        # Convert start_date to datetime.date if it's a datetime.datetime
         if isinstance(self.start_date, datetime):
             self.start_date = self.start_date.date()
         if not self.end_date:
             add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
             self.end_date = self.start_date + timedelta(days=add_days)
-        # Convert end_date to datetime.date if it's a datetime.datetime
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
-        if self.end_date and self.end_date < timezone.now().date():
-            self.is_active = False
-            self.user.is_premium = False
-        else:
-            self.user.is_premium = True
+        current_date = timezone.now().date()
+        self.is_active = self.end_date >= current_date
+        self.user.is_premium = self.is_active
         self.user.save()
         super().save(*args, **kwargs)
 
@@ -287,11 +301,13 @@ class UserProgram(models.Model):
             return (completed_sessions / total_sessions) * 100
         return 0
 
+
     def is_subscription_active(self):
-        """
-        ✅ Check if the user has an active subscription (handled in `UserSubscription`).
-        """
-        return UserSubscription.objects.filter(user=self.user, is_active=True, end_date__gte=timezone.now().date()).exists()
+        return UserSubscription.objects.filter(
+            user=self.user,
+            is_active=True,
+            end_date__gte=timezone.now().date()
+        ).exists()
 
     def __str__(self):
         """

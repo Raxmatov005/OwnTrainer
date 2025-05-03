@@ -438,6 +438,32 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             return ExerciseBlockUpdateSerializer
         return ExerciseBlockListSerializer  # fallback
 
+    # def get_queryset(self):
+    #     if getattr(self, 'swagger_fake_view', False):
+    #         return ExerciseBlock.objects.none()
+    #
+    #     user = self.request.user
+    #     if user.is_staff or user.is_superuser:
+    #         return ExerciseBlock.objects.all()
+    #
+    #     user_program = UserProgram.objects.filter(user=user, is_active=True).first()
+    #     if not user_program:
+    #         return ExerciseBlock.objects.none()
+    #
+    #     # Add subscription check
+    #     has_active_subscription = UserSubscription.objects.filter(
+    #         user=user,
+    #         is_active=True,
+    #         end_date__gte=timezone.now().date()
+    #     ).exists()
+    #
+    #     if not has_active_subscription:
+    #         return ExerciseBlock.objects.none()
+    #
+    #     return ExerciseBlock.objects.filter(
+    #         session__program=user_program.program
+    #     ).distinct()
+
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return ExerciseBlock.objects.none()
@@ -447,17 +473,9 @@ class ExerciseBlockViewSet(viewsets.ModelViewSet):
             return ExerciseBlock.objects.all()
 
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-        if not user_program:
-            return ExerciseBlock.objects.none()
-
-        # Add subscription check
-        has_active_subscription = UserSubscription.objects.filter(
-            user=user,
-            is_active=True,
-            end_date__gte=timezone.now().date()
-        ).exists()
-
-        if not has_active_subscription:
+        if not user_program or not UserSubscription.objects.filter(
+                user=user, is_active=True, end_date__gte=timezone.now().date()
+        ).exists():
             return ExerciseBlock.objects.none()
 
         return ExerciseBlock.objects.filter(
@@ -615,6 +633,8 @@ class ExerciseViewSet(viewsets.ModelViewSet):
     Endpoints for listing, retrieving, creating, and updating Exercises.
     Uses separate serializers for create and update operations.
     """
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+    parser_classes = [JSONParser]
 
     def get_queryset(self):
         user = self.request.user
@@ -622,16 +642,16 @@ class ExerciseViewSet(viewsets.ModelViewSet):
             return Exercise.objects.all()
 
         user_program = UserProgram.objects.filter(user=user, is_active=True).first()
-        if not user_program or not user_program.is_subscription_active():
+        if not user_program or not UserSubscription.objects.filter(
+                user=user, is_active=True, end_date__gte=timezone.now().date()
+        ).exists():
             return Exercise.objects.none()
 
-        # Filter exercises by the user's program and goal
         return Exercise.objects.filter(
             blocks__session__program=user_program.program,
             exercise_type=user.goal
         ).distinct()
-    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
-    parser_classes = [JSONParser]
+
 
 
     def get_serializer_context(self):
