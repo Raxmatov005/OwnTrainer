@@ -14,6 +14,8 @@ import logging
 
 
 
+
+
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 1000,
@@ -121,6 +123,7 @@ class OrderTestView(PyClickMerchantAPIView):
 
 
 
+x
 
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
@@ -130,36 +133,49 @@ class ClickPrepareAPIView(APIView):
         logger.info(f"Click Prepare request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
             order_id = request.data.get("order_id")
-            amount = int(request.data.get("amount"))
+            amount = request.data.get("amount")
             merchant_id = request.data.get("merchant_id")
             service_id = request.data.get("service_id")
 
+            # Validate all required parameters are present
             if not all([order_id, amount, merchant_id, service_id]):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            subscription = UserSubscription.objects.get(id=order_id)
-            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
-            if amount != expected_amount:
-                logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+            # Access the first item from QueryDict (list)
+            order_id = order_id[0]
+            amount = amount[0]
+            merchant_id = merchant_id[0]
+            service_id = service_id[0]
+
+            # Convert amount to integer (Click sends amount in tiyins)
+            try:
+                amount = int(amount)
+            except ValueError:
+                logger.error(f"Invalid amount format: {amount}, data: {request.data}")
                 return Response({"error": -1}, status=400)
 
+            # Fetch subscription
+            try:
+                subscription = UserSubscription.objects.get(id=order_id)
+                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+                if amount != expected_amount:
+                    logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+                    return Response({"error": -1}, status=400)
+            except UserSubscription.DoesNotExist:
+                logger.error(f"Subscription not found for order_id: {order_id}")
+                return Response({"error": -1}, status=404)
+
+            # Validate merchant_id
             if merchant_id != "31383":  # Replace with your actual merchant ID
                 logger.error(f"Invalid merchant_id: {merchant_id}")
                 return Response({"error": -1}, status=400)
 
             logger.info(f"Prepare request validated successfully for order_id {order_id}")
             return Response({"error": 0}, status=200)
-        except UserSubscription.DoesNotExist:
-            logger.error(f"Subscription not found for order_id: {order_id}")
-            return Response({"error": -1}, status=404)
-        except ValueError as e:
-            logger.error(f"Invalid amount format: {e}, data: {request.data}")
-            return Response({"error": -1}, status=400)
         except Exception as e:
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}")
             return Response({"error": -1}, status=500)
-
 
 class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
@@ -169,37 +185,57 @@ class ClickCompleteAPIView(APIView):
         logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
             order_id = request.data.get("order_id")
-            amount = int(request.data.get("amount"))
-            status = request.data.get("state")  # Use 'state' instead of 'status' per Click docs
+            amount = request.data.get("amount")
+            state = request.data.get("state")  # Use 'state' per Click docs
 
-            subscription = UserSubscription.objects.get(id=order_id)
-            expected_amount = subscription.amount_in_soum * 100
-            if amount != expected_amount:
-                logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                return Response({"error": -1})
+            # Validate all required parameters are present
+            if not all([order_id, amount, state]):
+                logger.error(f"Missing required parameters: {request.data}")
+                return Response({"result": {"code": -1}}, status=400)
 
-            if status == "1":  # Success status (confirm with Click docs)
+            # Access the first item from QueryDict (list)
+            order_id = order_id[0]
+            amount = amount[0]
+            state = state[0]
+
+            # Convert amount and state to integers
+            try:
+                amount = int(amount)
+                state = int(state)
+            except ValueError:
+                logger.error(f"Invalid amount or state format: amount={amount}, state={state}, data: {request.data}")
+                return Response({"result": {"code": -1}}, status=400)
+
+            # Fetch subscription
+            try:
+                subscription = UserSubscription.objects.get(id=order_id)
+                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+                if amount != expected_amount:
+                    logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+                    return Response({"result": {"code": -1}}, status=400)
+            except UserSubscription.DoesNotExist:
+                logger.error(f"Subscription not found for order_id: {order_id}")
+                return Response({"result": {"code": -1}}, status=404)
+
+            # Process payment status
+            if state == 1:  # Success status
                 subscription.is_active = True
-                add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
+                add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)  # Default to 30 days
                 subscription.extend_subscription(add_days)
                 subscription.save()
-                logger.info(f"Click payment successful for subscription: {subscription.id}")
-            elif status == "0":  # Failed status
+                logger.info(f"✅ Click payment successful for subscription ID: {order_id}")
+            elif state == 0:  # Failed status
                 subscription.is_active = False
                 subscription.save()
-                logger.info(f"Click payment failed for subscription: {subscription.id}")
+                logger.info(f"❌ Click payment failed for subscription ID: {order_id}")
             else:
-                logger.warning(f"Unknown state: {status}")
-                return Response({"error": -1})
+                logger.warning(f"Unknown state: {state}")
+                return Response({"result": {"code": -1}}, status=400)
 
-            return Response({"error": 0})
-        except UserSubscription.DoesNotExist:
-            logger.error(f"Subscription not found for order_id: {order_id}")
-            return Response({"error": -1})
+            return Response({"result": {"code": 0}}, status=200)
         except Exception as e:
-            logger.error(f"Error in Click Complete: {str(e)}")
-            return Response({"error": -1})
-
+            logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}")
+            return Response({"result": {"code": -1}}, status=500)
 
 class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
