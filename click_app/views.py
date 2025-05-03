@@ -125,7 +125,7 @@ class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        logger.info(f"Click Prepare request at {timezone.now()}: {request.data}, Headers: {request.headers}")
+        logger.info(f"Click Prepare request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
             order_id = request.data.get("order_id")
             amount = int(request.data.get("amount"))
@@ -163,7 +163,7 @@ class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        logger.info(f"Click Complete request at {timezone.now()}: {request.data}, Headers: {request.headers}")
+        logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
             order_id = request.data.get("order_id")
             amount = int(request.data.get("amount"))
