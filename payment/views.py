@@ -60,10 +60,8 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         subscription_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
-            subscription.is_active = True
             add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
             subscription.extend_subscription(add_days)
-            subscription.save()
             logger.info(f"✅ Payment successful for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
@@ -121,11 +119,13 @@ class UnifiedPaymentInitView(APIView):
             logger.info(f"Payme redirect URL: {payme_url}")
             return Response({"redirect_url": payme_url})
 
+
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
+            amount_in_tiyins = amount * 100  # Convert to tiyins
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
-                amount=str(amount),
+                amount=str(amount_in_tiyins),
                 return_url=return_url
             )
             logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}")

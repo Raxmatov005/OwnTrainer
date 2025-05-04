@@ -196,13 +196,14 @@ class UserSubscription(models.Model):
     def save(self, *args, **kwargs):
         if isinstance(self.start_date, datetime):
             self.start_date = self.start_date.date()
-        if not self.end_date:
-            add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
-            self.end_date = self.start_date + timedelta(days=add_days)
+        # Remove the automatic end_date setting for new subscriptions
+        # if not self.end_date and not self.pk:
+        #     add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
+        #     self.end_date = self.start_date + timedelta(days=add_days)
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
         current_date = timezone.now().date()
-        self.is_active = self.end_date >= current_date
+        self.is_active = self.end_date >= current_date if self.end_date else False
         self.user.is_premium = self.is_active
         self.user.save()
         super().save(*args, **kwargs)
@@ -210,14 +211,23 @@ class UserSubscription(models.Model):
     def is_subscription_active(self):
         return self.is_active and self.end_date >= timezone.now().date()
 
+    # def extend_subscription(self, add_days):
+    #     today = timezone.now().date()
+    #     if self.end_date and self.end_date >= today:
+    #         self.end_date = self.end_date + timedelta(days=add_days)
+    #     else:
+    #         self.start_date = today
+    #         self.end_date = today + timedelta(days=add_days)
+    #     # Ensure end_date is a datetime.date
+    #     if isinstance(self.end_date, datetime):
+    #         self.end_date = self.end_date.date()
+    #     self.is_active = True
+    #     self.save()
+
     def extend_subscription(self, add_days):
         today = timezone.now().date()
-        if self.end_date and self.end_date >= today:
-            self.end_date = self.end_date + timedelta(days=add_days)
-        else:
-            self.start_date = today
-            self.end_date = today + timedelta(days=add_days)
-        # Ensure end_date is a datetime.date
+        # Always set end_date to start_date + add_days, ignoring existing end_date
+        self.end_date = self.start_date + timedelta(days=add_days)
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
         self.is_active = True

@@ -89,24 +89,21 @@ class ClickPaymentTests(TestCase):
         self.assertEqual(response.json(), {"error": -1})
 
     def test_click_complete_api(self):
-        """Test the ClickCompleteAPIView to ensure it processes a successful payment."""
         response = self.client.post(
             reverse("click_complete"),
             {
                 "order_id": self.subscription.id,
-                "amount": self.subscription.amount,  # 100,000 tiyins
-                "state": "1"  # Payment successful
+                "amount": self.subscription.amount,
+                "state": "1"
             },
             format="multipart"
         )
-
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"result": {"code": 0}})
-
-        # Refresh subscription from database
         self.subscription.refresh_from_db()
         self.assertTrue(self.subscription.is_active)
         self.assertEqual(self.subscription.end_date, self.subscription.start_date + timezone.timedelta(days=30))
+
 
     def test_click_complete_api_failed_payment(self):
         """Test the ClickCompleteAPIView with a failed payment."""

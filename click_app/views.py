@@ -64,7 +64,7 @@ class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            if int(amount) == subscription.amount_in_soum * 100:  # Compare with tiyins
+            if int(amount) == subscription.amount:
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
         except UserSubscription.DoesNotExist:
@@ -74,16 +74,14 @@ class OrderCheckAndPayment(PyClick):
         try:
             user_subscription = UserSubscription.objects.get(id=order_id)
             logger.info(f"✅ Payment received for user {user_subscription.user.email_or_phone}")
-            user_subscription.is_active = True
-            user_subscription.save()
             add_days = SUBSCRIPTION_DAYS[user_subscription.subscription_type]
             user_subscription.extend_subscription(add_days)
             logger.info(f"✅ Subscription extended for {user_subscription.user.email_or_phone} by {add_days} days")
             self.create_sessions_for_user(user_subscription.user)
-            # Confirm transaction with Click (example, adjust per Click API)
             PyClick.confirm_transaction(transaction.transaction_id)
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {order_id}")
+
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         transaction = PyClick.get_by_transaction_id(transaction_id=params["id"])
@@ -159,8 +157,7 @@ class ClickPrepareAPIView(APIView):
         except Exception as e:
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
-
-class ClickCompleteAPIView(APIView):
+class ClickCompleteAPIView(ApiView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
@@ -175,13 +172,12 @@ class ClickCompleteAPIView(APIView):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"result": {"code": -1}}, status=400)
 
-            # Ensure we handle the first element if it's a list
             order_id = order_id[0] if isinstance(order_id, list) else order_id
             amount = amount[0] if isinstance(amount, list) else amount
             state = state[0] if isinstance(state, list) else state
 
             try:
-                amount = int(amount)  # Amount should already be in tiyins
+                amount = int(amount)
                 state = int(state)
             except ValueError:
                 logger.error(f"Invalid amount or state format: amount={amount}, state={state}, data: {request.data}")
@@ -189,7 +185,7 @@ class ClickCompleteAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert so'm to tiyins
+                expected_amount = subscription.amount
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
@@ -206,7 +202,7 @@ class ClickCompleteAPIView(APIView):
                 logger.info(f"✅ Click payment successful for subscription ID: {order_id}")
             elif state == 0:
                 subscription.is_active = False
-                subscription.save()
+                subscription.save(update_fields=['is_active'])  # Only update is_active to avoid save logic
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}")
             else:
                 logger.warning(f"Unknown state: {state}")
@@ -216,7 +212,6 @@ class ClickCompleteAPIView(APIView):
         except Exception as e:
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"result": {"code": -1}}, status=500)
-
 class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
 
