@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment="." />
+    <list default="true" id="a4507e2f-7134-4ff2-b13a-48d1d695f7ab" name="Changes" comment=".">
+      <change beforePath="$PROJECT_DIR$/payment/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/payment/views.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -251,15 +253,7 @@
       <workItem from="1746190876989" duration="2199000" />
       <workItem from="1746198570120" duration="595000" />
       <workItem from="1746265592633" duration="13858000" />
-      <workItem from="1746341304186" duration="4492000" />
-    </task>
-    <task id="LOCAL-00258" summary=".">
-      <option name="closed" value="true" />
-      <created>1745335484869</created>
-      <option name="number" value="00258" />
-      <option name="presentableId" value="LOCAL-00258" />
-      <option name="project" value="LOCAL" />
-      <updated>1745335484869</updated>
+      <workItem from="1746341304186" duration="5408000" />
     </task>
     <task id="LOCAL-00259" summary=".">
       <option name="closed" value="true" />
@@ -645,7 +639,15 @@
       <option name="project" value="LOCAL" />
       <updated>1746362700721</updated>
     </task>
-    <option name="localTasksCounter" value="307" />
+    <task id="LOCAL-00307" summary=".">
+      <option name="closed" value="true" />
+      <created>1746363514689</created>
+      <option name="number" value="00307" />
+      <option name="presentableId" value="LOCAL-00307" />
+      <option name="project" value="LOCAL" />
+      <updated>1746363514689</updated>
+    </task>
+    <option name="localTasksCounter" value="308" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
