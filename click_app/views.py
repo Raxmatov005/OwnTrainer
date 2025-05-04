@@ -27,12 +27,6 @@ SUBSCRIPTION_DAYS = {
 logger = logging.getLogger(__name__)
 
 class CreateClickOrderView(CreateAPIView):
-    """
-    Processes subscription payments via Click and creates a payment link.
-    """
-    serializer_class = ClickOrderSerializer
-    permission_classes = [AllowAny]
-
     def post(self, request, *args, **kwargs):
         subscription_type = request.data.get('subscription_type')
         if subscription_type not in SUBSCRIPTION_COSTS:
@@ -48,12 +42,15 @@ class CreateClickOrderView(CreateAPIView):
             defaults={"subscription_type": subscription_type, "is_active": False, "amount_in_soum": amount}
         )
         user_subscription.subscription_type = subscription_type
-        user_subscription.amount_in_soum = amount  # Ensure amount_in_soum is set correctly
+        user_subscription.amount_in_soum = amount
         user_subscription.is_active = False
         user_subscription.save()
 
         return_url = 'https://owntrainer.uz/'
-        pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount * 100), return_url=return_url)  # Convert UZS to tiyins
+        amount_in_tiyins = amount * 100
+        logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
+        pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
+        logger.info(f"Generated Click URL: {pay_url}")
         return redirect(pay_url)
 
 class OrderCheckAndPayment(PyClick):
@@ -167,6 +164,7 @@ class ClickCompleteAPIView(APIView):
             order_id = request.data.get("order_id")
             amount = request.data.get("amount")
             state = request.data.get("state")
+            logger.debug(f"Received amount: {amount}")
 
             if not all([order_id, amount, state]):
                 logger.error(f"Missing required parameters: {request.data}")

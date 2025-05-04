@@ -89,11 +89,13 @@ class ClickPaymentTests(TestCase):
         self.assertEqual(response.json(), {"error": -1})
 
     def test_click_complete_api(self):
+        expected_amount = self.subscription.amount  # 100,000 tiyins
+        logger.info(f"Test sending amount: {expected_amount} tiyins")
         response = self.client.post(
             reverse("click_complete"),
             {
                 "order_id": self.subscription.id,
-                "amount": self.subscription.amount,
+                "amount": str(expected_amount),  # Explicitly send as string
                 "state": "1"
             },
             format="multipart"
