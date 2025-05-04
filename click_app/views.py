@@ -27,6 +27,8 @@ SUBSCRIPTION_DAYS = {
 logger = logging.getLogger(__name__)
 
 class CreateClickOrderView(CreateAPIView):
+    serializer_class = None
+    swagger_fake_view = True
     def post(self, request, *args, **kwargs):
         subscription_type = request.data.get('subscription_type')
         if subscription_type not in SUBSCRIPTION_COSTS:
