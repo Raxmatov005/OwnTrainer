@@ -10,7 +10,7 @@ from users_app.models import UserSubscription
 from datetime import timedelta
 from .serializers import ClickOrderSerializer
 import logging
-
+from register import settings
 
 
 
