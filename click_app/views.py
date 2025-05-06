@@ -185,23 +185,20 @@ class ClickCompleteAPIView(APIView):
     def post(self, request):
         logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
-            # Extract required parameters
             click_trans_id = request.data.get("click_trans_id")
             service_id = request.data.get("service_id")
             click_paydoc_id = request.data.get("click_paydoc_id")
             order_id = request.data.get("merchant_trans_id")
             amount = request.data.get("amount")
-            state = request.data.get("error")  # Click uses 'error' for status
+            state = request.data.get("error")
             sign_time = request.data.get("sign_time")
             sign_string = request.data.get("sign_string")
 
-            # Validate required parameters
             required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, state, sign_time, sign_string]
             if not all(required_params):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            # Handle QueryDict lists
             click_trans_id = click_trans_id[0] if isinstance(click_trans_id, list) else click_trans_id
             service_id = service_id[0] if isinstance(service_id, list) else service_id
             click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
@@ -213,8 +210,11 @@ class ClickCompleteAPIView(APIView):
 
             # Validate sign_string
             secret_key = settings.CLICK_SETTINGS['secret_key']
+            logger.info(f"Using secret_key: {secret_key}")
             sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{click_paydoc_id}{amount}{state}{sign_time}"
+            logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
+            logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
             if sign_string != expected_sign:
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
                 return Response({"error": -4}, status=400)
@@ -237,8 +237,7 @@ class ClickCompleteAPIView(APIView):
                 logger.error(f"Subscription not found for order_id: {order_id}")
                 return Response({"error": -1}, status=404)
 
-            # Confirm payment with Click API before updating subscription
-            if state == 0:  # Success (error=0 in Click API)
+            if state == 0:
                 merchant_user_id = settings.CLICK_SETTINGS['merchant_user_id']
                 secret_key = settings.CLICK_SETTINGS['secret_key']
                 timestamp = str(int(time.time()))
@@ -259,7 +258,6 @@ class ClickCompleteAPIView(APIView):
                 response = requests.post(confirm_url, json=confirm_payload, headers=confirm_headers)
                 if response.status_code == 200 and response.json().get("error_code") == 0:
                     logger.info(f"✅ Payment confirmed with Click API for transaction {click_trans_id}")
-                    # Update subscription only after successful confirmation
                     subscription.is_active = True
                     add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
                     subscription.extend_subscription(add_days)
@@ -268,7 +266,7 @@ class ClickCompleteAPIView(APIView):
                 else:
                     logger.error(f"❌ Failed to confirm payment with Click API: {response.text}")
                     return Response({"error": -1}, status=400)
-            elif state < 0:  # Failure
+            elif state < 0:
                 subscription.is_active = False
                 subscription.save(update_fields=['is_active'])
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}")
@@ -280,6 +278,7 @@ class ClickCompleteAPIView(APIView):
         except Exception as e:
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
+
 
 class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
