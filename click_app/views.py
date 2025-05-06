@@ -9,7 +9,9 @@ from pyclick.views import PyClickMerchantAPIView
 from users_app.models import UserSubscription
 from datetime import timedelta
 from .serializers import ClickOrderSerializer
+import hashlib
 import logging
+import requests
 from register import settings
 
 
