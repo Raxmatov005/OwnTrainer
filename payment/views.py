@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
@@ -98,6 +99,8 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
 
 
+
+
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
 
@@ -116,14 +119,25 @@ class UnifiedPaymentInitView(APIView):
         amount = SUBSCRIPTION_COSTS[subscription_type]
         logger.info(f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-        subscription, created = UserSubscription.objects.get_or_create(
-            user=user,
-            defaults={"subscription_type": subscription_type, "amount_in_soum": amount, "is_active": False}
-        )
-        subscription.subscription_type = subscription_type
-        subscription.amount_in_soum = amount
-        subscription.is_active = False  # Ensure is_active is False before payment
-        subscription.save()
+        # Find the most recent subscription or create a new one if none exists
+        subscription = UserSubscription.objects.filter(user=user).order_by('-id').first()
+        if not subscription:
+            subscription = UserSubscription.objects.create(
+                user=user,
+                subscription_type=subscription_type,
+                amount_in_soum=amount,
+                is_active=False,
+                start_date=timezone.now().date()
+            )
+            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
+        else:
+            # Update the existing subscription
+            subscription.subscription_type = subscription_type
+            subscription.amount_in_soum = amount
+            subscription.is_active = False
+            subscription.start_date = timezone.now().date()  # Reset start date for new payment
+            subscription.save()
+            logger.info(f"Updated existing subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
             payme_url = generate_payme_docs_style_url(
