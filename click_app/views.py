@@ -11,6 +11,9 @@ from datetime import timedelta
 from .serializers import ClickOrderSerializer
 import logging
 
+
+
+
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 1000,
@@ -108,6 +111,7 @@ class OrderTestView(PyClickMerchantAPIView):
             }, status=400)
         return super().post(request, *args, **kwargs)
 
+
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -115,29 +119,35 @@ class ClickPrepareAPIView(APIView):
     def post(self, request):
         logger.info(f"Click Prepare request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
         try:
-            order_id = request.data.get("order_id")
+            # Map Click API fields to expected parameters
+            order_id = request.data.get("merchant_trans_id")  # Click uses merchant_trans_id for order_id
             amount = request.data.get("amount")
-            merchant_id = request.data.get("merchant_id")
+            merchant_id = request.data.get("merchant_id")  # May be missing; handle fallback
             service_id = request.data.get("service_id")
+
+            # Fallback for merchant_id if not provided (e.g., hardcoded or from config)
+            if not merchant_id:
+                merchant_id = "31383"  # Hardcoded based on your logs; replace with config if possible
 
             if not all([order_id, amount, merchant_id, service_id]):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
+            # Ensure we handle the first element if it's a list (from QueryDict)
             order_id = order_id[0] if isinstance(order_id, list) else order_id
             amount = amount[0] if isinstance(amount, list) else amount
             merchant_id = merchant_id[0] if isinstance(merchant_id, list) else merchant_id
             service_id = service_id[0] if isinstance(service_id, list) else service_id
 
             try:
-                amount = int(amount)
+                amount = int(amount)  # Amount should already be in tiyins
             except ValueError:
                 logger.error(f"Invalid amount format: {amount}, data: {request.data}")
                 return Response({"error": -1}, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100
+                expected_amount = subscription.amount_in_soum * 100  # Convert so'm to tiyins
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
