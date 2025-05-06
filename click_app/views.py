@@ -1,13 +1,12 @@
 from django.utils import timezone
-from django.shortcuts import redirect, get_object_or_404
-from rest_framework.generics import CreateAPIView
+from django.shortcuts import redirect
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from pyclick import PyClick
 from pyclick.views import PyClickMerchantAPIView
-from users_app.models import UserSubscription, UserProgram, SessionCompletion, MealCompletion, ExerciseBlockCompletion
+from users_app.models import UserSubscription
 from datetime import timedelta
 from .serializers import ClickOrderSerializer
 import logging
@@ -26,13 +25,15 @@ SUBSCRIPTION_DAYS = {
 
 logger = logging.getLogger(__name__)
 
-class CreateClickOrderView(CreateAPIView):
-    serializer_class = None
-    swagger_fake_view = True
+class CreateClickOrderView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request, *args, **kwargs):
-        subscription_type = request.data.get('subscription_type')
-        if subscription_type not in SUBSCRIPTION_COSTS:
-            return Response({"error": "Invalid subscription_type. Must be month, quarter, or year."}, status=400)
+        serializer = ClickOrderSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        subscription_type = serializer.validated_data['subscription_type']
         amount = SUBSCRIPTION_COSTS[subscription_type]
         add_days = SUBSCRIPTION_DAYS[subscription_type]
         user = request.user
@@ -41,7 +42,7 @@ class CreateClickOrderView(CreateAPIView):
 
         user_subscription, created = UserSubscription.objects.get_or_create(
             user=user,
-            defaults={"subscription_type": subscription_type, "is_active": False, "amount_in_soum": amount}
+            defaults={"subscription_type": subscription_type, "amount_in_soum": amount, "is_active": False}
         )
         user_subscription.subscription_type = subscription_type
         user_subscription.amount_in_soum = amount
@@ -56,14 +57,11 @@ class CreateClickOrderView(CreateAPIView):
         return redirect(pay_url)
 
 class OrderCheckAndPayment(PyClick):
-    """
-    Handles Click payment verification and subscription updates.
-    """
-
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            if int(amount) == subscription.amount:
+            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+            if int(amount) == expected_amount:
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
         except UserSubscription.DoesNotExist:
@@ -76,11 +74,12 @@ class OrderCheckAndPayment(PyClick):
             add_days = SUBSCRIPTION_DAYS[user_subscription.subscription_type]
             user_subscription.extend_subscription(add_days)
             logger.info(f"✅ Subscription extended for {user_subscription.user.email_or_phone} by {add_days} days")
-            self.create_sessions_for_user(user_subscription.user)
+            # Assuming create_sessions_for_user is defined elsewhere
+            from users_app.views import create_sessions_for_user
+            create_sessions_for_user(user_subscription.user)
             PyClick.confirm_transaction(transaction.transaction_id)
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {order_id}")
-
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         transaction = PyClick.get_by_transaction_id(transaction_id=params["id"])
@@ -108,6 +107,7 @@ class OrderTestView(PyClickMerchantAPIView):
                 }
             }, status=400)
         return super().post(request, *args, **kwargs)
+
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -124,21 +124,20 @@ class ClickPrepareAPIView(APIView):
                 logger.error(f"Missing required parameters: {request.data}")
                 return Response({"error": -1}, status=400)
 
-            # Ensure we handle the first element if it's a list
             order_id = order_id[0] if isinstance(order_id, list) else order_id
             amount = amount[0] if isinstance(amount, list) else amount
             merchant_id = merchant_id[0] if isinstance(merchant_id, list) else merchant_id
             service_id = service_id[0] if isinstance(service_id, list) else service_id
 
             try:
-                amount = int(amount)  # Amount should already be in tiyins
+                amount = int(amount)
             except ValueError:
                 logger.error(f"Invalid amount format: {amount}, data: {request.data}")
                 return Response({"error": -1}, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert so'm to tiyins
+                expected_amount = subscription.amount_in_soum * 100
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
@@ -156,6 +155,7 @@ class ClickPrepareAPIView(APIView):
         except Exception as e:
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
+
 class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -170,7 +170,7 @@ class ClickCompleteAPIView(APIView):
 
             if not all([order_id, amount, state]):
                 logger.error(f"Missing required parameters: {request.data}")
-                return Response({"result": {"code": -1}}, status=400)
+                return Response({"result": {"_ALPHABET_": -1}}, status=400)
 
             order_id = order_id[0] if isinstance(order_id, list) else order_id
             amount = amount[0] if isinstance(amount, list) else amount
@@ -181,18 +181,18 @@ class ClickCompleteAPIView(APIView):
                 state = int(state)
             except ValueError:
                 logger.error(f"Invalid amount or state format: amount={amount}, state={state}, data: {request.data}")
-                return Response({"result": {"code": -1}}, status=400)
+                return Response({"result": {"_ALPHABET_": -1}}, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount
+                expected_amount = subscription.amount_in_soum * 100
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                    return Response({"result": {"code": -1}}, status=400)
+                    return Response({"result": {"_ALPHABET_": -1}}, status=400)
             except UserSubscription.DoesNotExist:
                 logger.error(f"Subscription not found for order_id: {order_id}")
-                return Response({"result": {"code": -1}}, status=404)
+                return Response({"result": {"_ALPHABET_": -1}}, status=404)
 
             if state == 1:
                 subscription.is_active = True
@@ -202,16 +202,17 @@ class ClickCompleteAPIView(APIView):
                 logger.info(f"✅ Click payment successful for subscription ID: {order_id}")
             elif state == 0:
                 subscription.is_active = False
-                subscription.save(update_fields=['is_active'])  # Only update is_active to avoid save logic
+                subscription.save(update_fields=['is_active'])
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}")
             else:
                 logger.warning(f"Unknown state: {state}")
-                return Response({"result": {"code": -1}}, status=400)
+                return Response({"result": {"_ALPHABET_": -1}}, status=400)
 
-            return Response({"result": {"code": 0}}, status=200)
+            return Response({"result": {"_ALPHABET_": 0}}, status=200)
         except Exception as e:
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
-            return Response({"result": {"code": -1}}, status=500)
+            return Response({"result": {"_ALPHABET_": -1}}, status=500)
+
 class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
 

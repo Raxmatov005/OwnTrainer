@@ -4,20 +4,12 @@ from payme.models import PaymeTransactions
 from users_app.models import UserSubscription
 from django.utils import timezone
 from datetime import timedelta
+from rest_framework.response import Response
+from click_app.views import SUBSCRIPTION_DAYS, SUBSCRIPTION_COSTS, PyClick
+from .utils import generate_payme_docs_style_url
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from click_app.views import SUBSCRIPTION_COSTS, PyClick
-from .utils import generate_payme_docs_style_url
-
-
-# Subscription duration mapping
-SUBSCRIPTION_DAYS = {
-    'month': 30,
-    'quarter': 90,
-    'year': 365
-}
-
+from rest_framework.permissions import AllowAny
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,22 +18,36 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
         logger.info(f"Payme check_perform_transaction params: {params}")
         try:
-            subscription = UserSubscription.objects.get(id=params.get('account', {}).get('id'))
+            subscription_id = params.get('account', {}).get('id')
+            if not subscription_id:
+                logger.error("Missing subscription ID in account")
+                return response.CheckPerformTransaction(
+                    allow=False,
+                    reason=-31050,
+                    message="Invalid subscription ID",
+                    data="account[id]"
+                ).as_resp()
+
+            subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount
+            expected_amount = subscription.amount_in_soum * 100  # Ensure tiyins conversion
 
             logger.info(
-                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}")
+                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
+            )
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
                     allow=False,
+                    reason=-31001,
+                    message="Amount mismatch",
+                    data="amount"
                 ).as_resp()
 
             logger.info("Transaction allowed")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
-            logger.error("Invalid subscription ID")
+            logger.error(f"Invalid subscription ID: {subscription_id}")
             return response.CheckPerformTransaction(
                 allow=False,
                 reason=-31050,
@@ -52,6 +58,9 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.error(f"Error in check_perform_transaction: {str(e)}")
             return response.CheckPerformTransaction(
                 allow=False,
+                reason=-31000,
+                message="Internal server error",
+                data=str(e)
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
@@ -62,9 +71,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             subscription = UserSubscription.objects.get(id=subscription_id)
             add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
             subscription.extend_subscription(add_days)
+            subscription.is_active = True  # Explicitly set is_active
+            subscription.save()
             logger.info(f"✅ Payment successful for subscription ID: {subscription_id}")
+            # Assuming create_sessions_for_user is defined elsewhere
+            from users_app.views import create_sessions_for_user
+            create_sessions_for_user(subscription.user)
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
+        except Exception as e:
+            logger.error(f"Error in handle_successfully_payment: {str(e)}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_cancelled_payment params: {params}")
@@ -77,6 +93,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.info(f"✅ Cancelled payment for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
+        except Exception as e:
+            logger.error(f"Error in handle_cancelled_payment: {str(e)}")
+
+
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
@@ -94,21 +114,15 @@ class UnifiedPaymentInitView(APIView):
 
         user = request.user
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        logger.info(
-            f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+        logger.info(f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
         subscription, created = UserSubscription.objects.get_or_create(
             user=user,
-            is_active=True,
-            defaults={"subscription_type": subscription_type, "amount_in_soum": amount}
+            defaults={"subscription_type": subscription_type, "amount_in_soum": amount, "is_active": False}
         )
-        # Debug and enforce consistency
-        if subscription.amount_in_soum != amount:
-            logger.warning(
-                f"Consistency check failed: amount_in_soum was {subscription.amount_in_soum}, setting to {amount}")
         subscription.subscription_type = subscription_type
         subscription.amount_in_soum = amount
-        subscription.is_active = False
+        subscription.is_active = False  # Ensure is_active is False before payment
         subscription.save()
 
         if payment_method == "payme":
@@ -119,10 +133,9 @@ class UnifiedPaymentInitView(APIView):
             logger.info(f"Payme redirect URL: {payme_url}")
             return Response({"redirect_url": payme_url})
 
-
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
-            amount_in_tiyins = amount * 100  # Convert to tiyins
+            amount_in_tiyins = amount * 100
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),

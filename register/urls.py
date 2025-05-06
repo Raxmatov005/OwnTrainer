@@ -39,6 +39,5 @@ urlpatterns = [
     path("payment/update/", PaymeCallBackAPIView.as_view()),
     path('init/', UnifiedPaymentInitView.as_view(), name='payment-init'),
     path('', include('click_app.urls')),
-    path('health/', HealthCheckAPIView.as_view(), name='health-check'),
 ]
 
