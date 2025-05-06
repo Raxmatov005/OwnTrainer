@@ -144,10 +144,13 @@ class ClickPrepareAPIView(APIView):
             sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
             sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
 
-            # Validate sign_string using CLICK_SETTINGS
+            # Validate sign_string
             secret_key = settings.CLICK_SETTINGS['secret_key']
+            logger.info(f"Using secret_key: {secret_key}")  # Already present
             sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{click_paydoc_id}{amount}{action}{sign_time}"
+            logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
+            logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
             if sign_string != expected_sign:
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
                 return Response({"error": -4}, status=400)
