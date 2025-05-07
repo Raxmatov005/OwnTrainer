@@ -139,6 +139,7 @@ class UnifiedPaymentInitView(APIView):
             subscription.save()
             logger.info(f"Updated existing subscription ID: {subscription.id} for user {user.email_or_phone}")
 
+
         if payment_method == "payme":
             payme_url = generate_payme_docs_style_url(
                 subscription_type=subscription_type,
