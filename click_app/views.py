@@ -12,6 +12,7 @@ from .serializers import ClickOrderSerializer
 import hashlib
 import logging
 import requests
+import time
 from register import settings
 
 
@@ -125,6 +126,7 @@ class ClickPrepareAPIView(APIView):
             service_id = request.data.get("service_id")
             click_paydoc_id = request.data.get("click_paydoc_id")
             order_id = request.data.get("merchant_trans_id")
+            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id)  # Fallback to click_paydoc_id if not present
             amount = request.data.get("amount")
             action = request.data.get("action")
             sign_time = request.data.get("sign_time")
@@ -139,15 +141,26 @@ class ClickPrepareAPIView(APIView):
             service_id = service_id[0] if isinstance(service_id, list) else service_id
             click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
             order_id = order_id[0] if isinstance(order_id, list) else order_id
+            merchant_prepare_id = merchant_prepare_id[0] if isinstance(merchant_prepare_id, list) else merchant_prepare_id
             amount = amount[0] if isinstance(amount, list) else amount
             action = action[0] if isinstance(action, list) else action
             sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
             sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
 
-            # Validate sign_string
+            # Log all parameters for debugging
+            logger.info(f"click_trans_id: {click_trans_id}")
+            logger.info(f"service_id: {service_id}")
+            logger.info(f"merchant_prepare_id: {merchant_prepare_id}")
+            logger.info(f"click_paydoc_id: {click_paydoc_id}")
+            logger.info(f"order_id: {order_id}")
+            logger.info(f"amount: {amount}")
+            logger.info(f"action: {action}")
+            logger.info(f"sign_time: {sign_time}")
+
+            # Validate sign_string as per Click support's instruction
             secret_key = settings.CLICK_SETTINGS['secret_key']
-            logger.info(f"Using secret_key: {secret_key}")  # Already present
-            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{click_paydoc_id}{amount}{action}{sign_time}"
+            logger.info(f"Using secret_key: {secret_key}")
+            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
             logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
@@ -183,6 +196,7 @@ class ClickPrepareAPIView(APIView):
             return Response({"error": -1}, status=500)
 
 
+
 class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -194,6 +208,7 @@ class ClickCompleteAPIView(APIView):
             service_id = request.data.get("service_id")
             click_paydoc_id = request.data.get("click_paydoc_id")
             order_id = request.data.get("merchant_trans_id")
+            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id)  # Fallback to click_paydoc_id if not present
             amount = request.data.get("amount")
             state = request.data.get("error")
             sign_time = request.data.get("sign_time")
@@ -208,15 +223,26 @@ class ClickCompleteAPIView(APIView):
             service_id = service_id[0] if isinstance(service_id, list) else service_id
             click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
             order_id = order_id[0] if isinstance(order_id, list) else order_id
+            merchant_prepare_id = merchant_prepare_id[0] if isinstance(merchant_prepare_id, list) else merchant_prepare_id
             amount = amount[0] if isinstance(amount, list) else amount
             state = state[0] if isinstance(state, list) else state
             sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
             sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
 
-            # Validate sign_string
+            # Log all parameters for debugging
+            logger.info(f"click_trans_id: {click_trans_id}")
+            logger.info(f"service_id: {service_id}")
+            logger.info(f"merchant_prepare_id: {merchant_prepare_id}")
+            logger.info(f"click_paydoc_id: {click_paydoc_id}")
+            logger.info(f"order_id: {order_id}")
+            logger.info(f"amount: {amount}")
+            logger.info(f"state: {state}")
+            logger.info(f"sign_time: {sign_time}")
+
+            # Validate sign_string as per Click support's instruction
             secret_key = settings.CLICK_SETTINGS['secret_key']
             logger.info(f"Using secret_key: {secret_key}")
-            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{click_paydoc_id}{amount}{state}{sign_time}"
+            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{state}{sign_time}"
             logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
