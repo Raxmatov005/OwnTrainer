@@ -164,8 +164,12 @@ class ClickPrepareAPIView(APIView):
             secret_key = settings.CLICK_SETTINGS['secret_key']
             logger.info(f"Using secret_key: {secret_key}")
 
-            # Updated sign_input to match Click's expected order
-            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
+            # Adjust sign_input based on action: exclude merchant_prepare_id for action=0
+            if action == '0':
+                sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{amount}{action}{sign_time}"
+            else:
+                sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
+
             logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
