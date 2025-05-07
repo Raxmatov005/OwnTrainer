@@ -152,7 +152,7 @@ class UnifiedPaymentInitView(APIView):
             return_url = "https://owntrainer.uz/payment/success"
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
-                amount=str(amount_in_tiyins),
+                amount=str(amount),
                 return_url=return_url
             )
             logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}")
