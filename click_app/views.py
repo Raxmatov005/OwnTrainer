@@ -126,7 +126,7 @@ class ClickPrepareAPIView(APIView):
             service_id = request.data.get("service_id")
             click_paydoc_id = request.data.get("click_paydoc_id")
             order_id = request.data.get("merchant_trans_id")
-            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id) # Fallback to click_paydoc_id if not present [19]
+            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id)
             amount = request.data.get("amount")
             action = request.data.get("action")
             sign_time = request.data.get("sign_time")
@@ -135,7 +135,7 @@ class ClickPrepareAPIView(APIView):
             required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, action, sign_time, sign_string]
             if not all(required_params):
                 logger.error(f"Missing required parameters: {request.data}")
-                return Response({"error": -1}, status=400) [20]
+                return Response({"error": -1}, status=400)
 
             # Ensure params are not lists if they were parsed as such
             click_trans_id = click_trans_id if isinstance(click_trans_id, list) else click_trans_id
@@ -143,9 +143,9 @@ class ClickPrepareAPIView(APIView):
             click_paydoc_id = click_paydoc_id if isinstance(click_paydoc_id, list) else click_paydoc_id
             order_id = order_id if isinstance(order_id, list) else order_id
             merchant_prepare_id = merchant_prepare_id if isinstance(merchant_prepare_id, list) else merchant_prepare_id
-            amount = amount if isinstance(amount, list) else amount [21]
+            amount = amount if isinstance(amount, list) else amount
             action = action if isinstance(action, list) else action
-            sign_time = sign_time if isinstance(sign_time, list) else sign_time [22]
+            sign_time = sign_time if isinstance(sign_time, list) else sign_time
             sign_string = sign_string if isinstance(sign_string, list) else sign_string
 
             # Log all parameters for debugging [22]
@@ -162,16 +162,15 @@ class ClickPrepareAPIView(APIView):
             secret_key = settings.CLICK_SETTINGS['secret_key']
             logger.info(f"Using secret_key: {secret_key}")
 
-            # *** FIX: Corrected signature input string calculation ***
-            # The formula appears to be action + click_trans_id + service_id + secret_key + order_id + amount + sign_time
+
             sign_input = f"{action}{click_trans_id}{service_id}{secret_key}{order_id}{amount}{sign_time}"
-            # *** End FIX ***
+
 
             logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
 
-            if sign_string.lower() != expected_sign.lower(): # Compare lowercased hashes for safety
+            if sign_string.lower() != expected_sign.lower():
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
                 return Response({"error": -4}, status=400)
 
@@ -194,7 +193,7 @@ class ClickPrepareAPIView(APIView):
                 logger.error(f"Subscription not found for order_id: {order_id}")
                 return Response({"error": -1}, status=404)
 
-            if str(service_id) != str(settings.CLICK_SETTINGS['service_id']): # Ensure comparison is type-safe
+            if str(service_id) != str(settings.CLICK_SETTINGS['service_id']):
                 logger.error(f"Invalid service_id: {service_id}")
                 return Response({"error": -1}, status=400)
 
