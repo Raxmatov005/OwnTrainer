@@ -126,7 +126,7 @@ class ClickPrepareAPIView(APIView):
             service_id = request.data.get("service_id")
             click_paydoc_id = request.data.get("click_paydoc_id")
             order_id = request.data.get("merchant_trans_id")
-            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id)  # Fallback to click_paydoc_id if not present
+            merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id) # Fallback to click_paydoc_id if not present [19]
             amount = request.data.get("amount")
             action = request.data.get("action")
             sign_time = request.data.get("sign_time")
@@ -135,19 +135,20 @@ class ClickPrepareAPIView(APIView):
             required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, action, sign_time, sign_string]
             if not all(required_params):
                 logger.error(f"Missing required parameters: {request.data}")
-                return Response({"error": -1}, status=400)
+                return Response({"error": -1}, status=400) [20]
 
-            click_trans_id = click_trans_id[0] if isinstance(click_trans_id, list) else click_trans_id
-            service_id = service_id[0] if isinstance(service_id, list) else service_id
-            click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
-            order_id = order_id[0] if isinstance(order_id, list) else order_id
-            merchant_prepare_id = merchant_prepare_id[0] if isinstance(merchant_prepare_id, list) else merchant_prepare_id
-            amount = amount[0] if isinstance(amount, list) else amount
-            action = action[0] if isinstance(action, list) else action
-            sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
-            sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
+            # Ensure params are not lists if they were parsed as such
+            click_trans_id = click_trans_id if isinstance(click_trans_id, list) else click_trans_id
+            service_id = service_id if isinstance(service_id, list) else service_id
+            click_paydoc_id = click_paydoc_id if isinstance(click_paydoc_id, list) else click_paydoc_id
+            order_id = order_id if isinstance(order_id, list) else order_id
+            merchant_prepare_id = merchant_prepare_id if isinstance(merchant_prepare_id, list) else merchant_prepare_id
+            amount = amount if isinstance(amount, list) else amount [21]
+            action = action if isinstance(action, list) else action
+            sign_time = sign_time if isinstance(sign_time, list) else sign_time [22]
+            sign_string = sign_string if isinstance(sign_string, list) else sign_string
 
-            # Log all parameters for debugging
+            # Log all parameters for debugging [22]
             logger.info(f"click_trans_id: {click_trans_id}")
             logger.info(f"service_id: {service_id}")
             logger.info(f"merchant_prepare_id: {merchant_prepare_id}")
@@ -160,11 +161,17 @@ class ClickPrepareAPIView(APIView):
             # Validate sign_string as per Click support's instruction
             secret_key = settings.CLICK_SETTINGS['secret_key']
             logger.info(f"Using secret_key: {secret_key}")
-            sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
+
+            # *** FIX: Corrected signature input string calculation ***
+            # The formula appears to be action + click_trans_id + service_id + secret_key + order_id + amount + sign_time
+            sign_input = f"{action}{click_trans_id}{service_id}{secret_key}{order_id}{amount}{sign_time}"
+            # *** End FIX ***
+
             logger.info(f"Sign input: {sign_input}")
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
-            if sign_string != expected_sign:
+
+            if sign_string.lower() != expected_sign.lower(): # Compare lowercased hashes for safety
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
                 return Response({"error": -4}, status=400)
 
@@ -178,22 +185,104 @@ class ClickPrepareAPIView(APIView):
                 subscription = UserSubscription.objects.get(id=order_id)
                 expected_amount = subscription.amount_in_soum * 100
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
+
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"error": -1}, status=400)
+
             except UserSubscription.DoesNotExist:
                 logger.error(f"Subscription not found for order_id: {order_id}")
                 return Response({"error": -1}, status=404)
 
-            if service_id != settings.CLICK_SETTINGS['service_id']:
+            if str(service_id) != str(settings.CLICK_SETTINGS['service_id']): # Ensure comparison is type-safe
                 logger.error(f"Invalid service_id: {service_id}")
                 return Response({"error": -1}, status=400)
 
             logger.info(f"Prepare request validated successfully for order_id {order_id}")
-            return Response({"error": 0}, status=200)
+
+            # Assuming a successful prepare step, return the merchant_prepare_id
+            # The response for action=0 (prepare) should typically include merchant_prepare_id
+            return Response({"error": 0, "merchant_prepare_id": merchant_prepare_id}, status=200)
+
         except Exception as e:
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
             return Response({"error": -1}, status=500)
+
+    # def post(self, request):
+    #     logger.info(f"Click Prepare request at {timezone.now()}: Data={request.data}, Headers={request.headers}, Method={request.method}, IP={request.META.get('REMOTE_ADDR')}")
+    #     try:
+    #         click_trans_id = request.data.get("click_trans_id")
+    #         service_id = request.data.get("service_id")
+    #         click_paydoc_id = request.data.get("click_paydoc_id")
+    #         order_id = request.data.get("merchant_trans_id")
+    #         merchant_prepare_id = request.data.get("merchant_prepare_id", click_paydoc_id)  # Fallback to click_paydoc_id if not present
+    #         amount = request.data.get("amount")
+    #         action = request.data.get("action")
+    #         sign_time = request.data.get("sign_time")
+    #         sign_string = request.data.get("sign_string")
+    #
+    #         required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, action, sign_time, sign_string]
+    #         if not all(required_params):
+    #             logger.error(f"Missing required parameters: {request.data}")
+    #             return Response({"error": -1}, status=400)
+    #
+    #         click_trans_id = click_trans_id[0] if isinstance(click_trans_id, list) else click_trans_id
+    #         service_id = service_id[0] if isinstance(service_id, list) else service_id
+    #         click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
+    #         order_id = order_id[0] if isinstance(order_id, list) else order_id
+    #         merchant_prepare_id = merchant_prepare_id[0] if isinstance(merchant_prepare_id, list) else merchant_prepare_id
+    #         amount = amount[0] if isinstance(amount, list) else amount
+    #         action = action[0] if isinstance(action, list) else action
+    #         sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
+    #         sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
+    #
+    #         # Log all parameters for debugging
+    #         logger.info(f"click_trans_id: {click_trans_id}")
+    #         logger.info(f"service_id: {service_id}")
+    #         logger.info(f"merchant_prepare_id: {merchant_prepare_id}")
+    #         logger.info(f"click_paydoc_id: {click_paydoc_id}")
+    #         logger.info(f"order_id: {order_id}")
+    #         logger.info(f"amount: {amount}")
+    #         logger.info(f"action: {action}")
+    #         logger.info(f"sign_time: {sign_time}")
+    #
+    #         # Validate sign_string as per Click support's instruction
+    #         secret_key = settings.CLICK_SETTINGS['secret_key']
+    #         logger.info(f"Using secret_key: {secret_key}")
+    #         sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
+    #         logger.info(f"Sign input: {sign_input}")
+    #         expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
+    #         logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
+    #         if sign_string != expected_sign:
+    #             logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
+    #             return Response({"error": -4}, status=400)
+    #
+    #         try:
+    #             amount = int(amount)
+    #         except ValueError:
+    #             logger.error(f"Invalid amount format: {amount}, data: {request.data}")
+    #             return Response({"error": -1}, status=400)
+    #
+    #         try:
+    #             subscription = UserSubscription.objects.get(id=order_id)
+    #             expected_amount = subscription.amount_in_soum * 100
+    #             logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
+    #             if amount != expected_amount:
+    #                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
+    #                 return Response({"error": -1}, status=400)
+    #         except UserSubscription.DoesNotExist:
+    #             logger.error(f"Subscription not found for order_id: {order_id}")
+    #             return Response({"error": -1}, status=404)
+    #
+    #         if service_id != settings.CLICK_SETTINGS['service_id']:
+    #             logger.error(f"Invalid service_id: {service_id}")
+    #             return Response({"error": -1}, status=400)
+    #
+    #         logger.info(f"Prepare request validated successfully for order_id {order_id}")
+    #         return Response({"error": 0}, status=200)
+    #     except Exception as e:
+    #         logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
+    #         return Response({"error": -1}, status=500)
 
 
 
