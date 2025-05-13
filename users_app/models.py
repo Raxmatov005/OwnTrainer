@@ -175,35 +175,15 @@ class UserSubscription(models.Model):
         from click_app.views import SUBSCRIPTION_COSTS
         return SUBSCRIPTION_COSTS.get(self.subscription_type, 0) * 100
 
-    # def save(self, *args, **kwargs):
-    #     # Convert start_date to datetime.date if it's a datetime.datetime
-    #     if isinstance(self.start_date, datetime):
-    #         self.start_date = self.start_date.date()
-    #     if not self.end_date:
-    #         add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
-    #         self.end_date = self.start_date + timedelta(days=add_days)
-    #     # Convert end_date to datetime.date if it's a datetime.datetime
-    #     if isinstance(self.end_date, datetime):
-    #         self.end_date = self.end_date.date()
-    #     if self.end_date and self.end_date < timezone.now().date():
-    #         self.is_active = False
-    #         self.user.is_premium = False
-    #     else:
-    #         self.user.is_premium = True
-    #     self.user.save()
-    #     super().save(*args, **kwargs)
-
     def save(self, *args, **kwargs):
         if isinstance(self.start_date, datetime):
             self.start_date = self.start_date.date()
-        # Remove the automatic end_date setting for new subscriptions
-        # if not self.end_date and not self.pk:
-        #     add_days = {'month': 30, 'quarter': 90, 'year': 365}.get(self.subscription_type, 30)
-        #     self.end_date = self.start_date + timedelta(days=add_days)
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
-        current_date = timezone.now().date()
-        self.is_active = self.end_date >= current_date if self.end_date else False
+        # Only update is_active based on end_date if not explicitly set
+        if 'is_active' not in kwargs.get('update_fields', []):
+            current_date = timezone.now().date()
+            self.is_active = self.end_date >= current_date if self.end_date else False
         self.user.is_premium = self.is_active
         self.user.save()
         super().save(*args, **kwargs)
@@ -211,27 +191,14 @@ class UserSubscription(models.Model):
     def is_subscription_active(self):
         return self.is_active and self.end_date >= timezone.now().date()
 
-    # def extend_subscription(self, add_days):
-    #     today = timezone.now().date()
-    #     if self.end_date and self.end_date >= today:
-    #         self.end_date = self.end_date + timedelta(days=add_days)
-    #     else:
-    #         self.start_date = today
-    #         self.end_date = today + timedelta(days=add_days)
-    #     # Ensure end_date is a datetime.date
-    #     if isinstance(self.end_date, datetime):
-    #         self.end_date = self.end_date.date()
-    #     self.is_active = True
-    #     self.save()
-
     def extend_subscription(self, add_days):
         today = timezone.now().date()
-        # Always set end_date to start_date + add_days, ignoring existing end_date
-        self.end_date = self.start_date + timedelta(days=add_days)
+        self.start_date = today  # Always use current date
+        self.end_date = today + timedelta(days=add_days)
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
         self.is_active = True
-        self.save()
+        self.save(update_fields=['start_date', 'end_date', 'is_active'])
 
 @receiver(post_save, sender=UserSubscription)
 def create_sessions_on_subscription(sender, instance, created, **kwargs):
