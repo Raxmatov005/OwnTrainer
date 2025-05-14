@@ -56,7 +56,7 @@ class CreateClickOrderView(APIView):
         user_subscription.save()
 
         return_url = 'https://owntrainer.uz/'
-        amount_in_tiyins = amount * 100
+        amount_in_tiyins = amount
         logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
         pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
         logger.info(f"Generated Click URL: {pay_url}")
