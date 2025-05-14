@@ -31,7 +31,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum * 100  # Ensure tiyins conversion
+            expected_amount = subscription.amount_in_soum  # Ensure tiyins conversion
 
             logger.info(
                 f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
@@ -140,9 +140,10 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
+            amount_in_tiyins = amount * 100
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
-                amount=str(amount),
+                amount=str(amount_in_tiyins),
                 return_url=return_url
             )
             logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}")
