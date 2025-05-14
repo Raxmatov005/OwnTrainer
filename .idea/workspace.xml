@@ -259,23 +259,7 @@
       <workItem from="1746535058265" duration="4636000" />
       <workItem from="1746615356316" duration="7017000" />
       <workItem from="1747162066798" duration="3521000" />
-      <workItem from="1747199955893" duration="5202000" />
-    </task>
-    <task id="LOCAL-00288" summary=".">
-      <option name="closed" value="true" />
-      <created>1746289835662</created>
-      <option name="number" value="00288" />
-      <option name="presentableId" value="LOCAL-00288" />
-      <option name="project" value="LOCAL" />
-      <updated>1746289835662</updated>
-    </task>
-    <task id="LOCAL-00289" summary=".">
-      <option name="closed" value="true" />
-      <created>1746290434985</created>
-      <option name="number" value="00289" />
-      <option name="presentableId" value="LOCAL-00289" />
-      <option name="project" value="LOCAL" />
-      <updated>1746290434985</updated>
+      <workItem from="1747199955893" duration="5542000" />
     </task>
     <task id="LOCAL-00290" summary=".">
       <option name="closed" value="true" />
@@ -653,7 +637,23 @@
       <option name="project" value="LOCAL" />
       <updated>1747216459073</updated>
     </task>
-    <option name="localTasksCounter" value="337" />
+    <task id="LOCAL-00337" summary=".">
+      <option name="closed" value="true" />
+      <created>1747216476579</created>
+      <option name="number" value="00337" />
+      <option name="presentableId" value="LOCAL-00337" />
+      <option name="project" value="LOCAL" />
+      <updated>1747216476579</updated>
+    </task>
+    <task id="LOCAL-00338" summary=".">
+      <option name="closed" value="true" />
+      <created>1747216603145</created>
+      <option name="number" value="00338" />
+      <option name="presentableId" value="LOCAL-00338" />
+      <option name="project" value="LOCAL" />
+      <updated>1747216603145</updated>
+    </task>
+    <option name="localTasksCounter" value="339" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
