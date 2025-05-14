@@ -132,7 +132,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment/success"
-            amount_in_tiyins = amount
+            amount_in_tiyins = amount * 100
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
