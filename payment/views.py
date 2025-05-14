@@ -136,6 +136,7 @@ class UnifiedPaymentInitView(APIView):
                 user_program_id=subscription.id
             )
             logger.info(f"Payme redirect URL: {payme_url}")
+
             return Response({"redirect_url": payme_url})
 
         elif payment_method == "click":
