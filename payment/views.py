@@ -24,7 +24,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 logger.error("Missing subscription ID in account")
                 return response.CheckPerformTransaction(
                     allow=False,
-                    detail="Invalid subscription ID",
                     message="Invalid subscription ID",
                     data="account[id]"
                 ).as_resp()
@@ -40,7 +39,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
                     allow=False,
-                    detail="Amount mismatch",
                     message="Amount mismatch",
                     data="amount"
                 ).as_resp()
@@ -51,7 +49,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.error(f"Invalid subscription ID: {subscription_id}")
             return response.CheckPerformTransaction(
                 allow=False,
-                detail="Invalid subscription ID",
                 message="Invalid subscription ID",
                 data="account[id]"
             ).as_resp()
@@ -59,7 +56,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.error(f"Error in check_perform_transaction: {str(e)}")
             return response.CheckPerformTransaction(
                 allow=False,
-                detail="Internal server error",
                 message="Internal server error",
                 data=str(e)
             ).as_resp()
