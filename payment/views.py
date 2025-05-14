@@ -114,7 +114,7 @@ class UnifiedPaymentInitView(APIView):
         subscription = UserSubscription.objects.create(
             user=user,
             subscription_type=subscription_type,
-            amount_in_soum=amount,
+            amount_in_soum=amount * 100,
             is_active=False,
             start_date=timezone.now().date()
         )

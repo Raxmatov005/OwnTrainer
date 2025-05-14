@@ -66,7 +66,7 @@ class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            expected_amount = subscription.amount_in_soum  # Convert to tiyins
+            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
             if int(amount) == expected_amount:
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
@@ -186,7 +186,7 @@ class ClickPrepareAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum
+                expected_amount = subscription.amount_in_soum * 100
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
 
                 if amount != expected_amount:
@@ -267,7 +267,7 @@ class ClickCompleteAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum  # Convert to tiyins for comparison
+                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins for comparison
                 logger.info(
                     f"Subscription ID: {order_id}, amount_in_soum: {subscription.amount_in_soum}, "
                     f"is_active: {subscription.is_active}, start_date: {subscription.start_date}, "
