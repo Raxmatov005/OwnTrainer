@@ -56,7 +56,7 @@ class CreateClickOrderView(APIView):
         user_subscription.save()
 
         return_url = 'https://owntrainer.uz/'
-        amount_in_tiyins = amount * 100
+        amount_in_tiyins = amount
         logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
         pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
         logger.info(f"Generated Click URL: {pay_url}")
@@ -66,7 +66,7 @@ class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+            expected_amount = subscription.amount_in_soum  # Convert to tiyins
             if int(amount) == expected_amount:
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
@@ -186,7 +186,7 @@ class ClickPrepareAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100
+                expected_amount = subscription.amount_in_soum
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
 
                 if amount != expected_amount:
@@ -267,7 +267,7 @@ class ClickCompleteAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins for comparison
+                expected_amount = subscription.amount_in_soum  # Convert to tiyins for comparison
                 logger.info(
                     f"Subscription ID: {order_id}, amount_in_soum: {subscription.amount_in_soum}, "
                     f"is_active: {subscription.is_active}, start_date: {subscription.start_date}, "
