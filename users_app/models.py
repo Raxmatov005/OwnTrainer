@@ -200,32 +200,32 @@ class UserSubscription(models.Model):
         self.is_active = True
         self.save(update_fields=['start_date', 'end_date', 'is_active'])
 
-@receiver(post_save, sender=UserSubscription)
-def create_sessions_on_subscription(sender, instance, created, **kwargs):
-    if created or instance.is_active:
-        from users_app.models import Program, UserProgram
-        # Select or create a Program based on user.goal
-        user = instance.user
-        program = None
-        if user.goal:
-            program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
-        if not program:
-            # Create a default Program if none exists
-            program = Program.objects.create(
-                program_goal=user.goal or 'gain_muscle',
-                is_active=True
-            )
-        # Ensure UserProgram exists
-        user_program, _ = UserProgram.objects.get_or_create(
-            user=user,
-            defaults={'program': program, 'is_active': True}
-        )
-        if not user_program.program:
-            user_program.program = program
-            user_program.save()
-        # Call create_sessions_for_user with user and program
-        from users_app.views import create_sessions_for_user
-        create_sessions_for_user(user, program)
+# @receiver(post_save, sender=UserSubscription)
+# def create_sessions_on_subscription(sender, instance, created, **kwargs):
+#     if created or instance.is_active:
+#         from users_app.models import Program, UserProgram
+#         # Select or create a Program based on user.goal
+#         user = instance.user
+#         program = None
+#         if user.goal:
+#             program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
+#         if not program:
+#             # Create a default Program if none exists
+#             program = Program.objects.create(
+#                 program_goal=user.goal or 'gain_muscle',
+#                 is_active=True
+#             )
+#         # Ensure UserProgram exists
+#         user_program, _ = UserProgram.objects.get_or_create(
+#             user=user,
+#             defaults={'program': program, 'is_active': True}
+#         )
+#         if not user_program.program:
+#             user_program.program = program
+#             user_program.save()
+#         # Call create_sessions_for_user with user and program
+#         from users_app.views import create_sessions_for_user
+#         create_sessions_for_user(user, program)
 
 
 class UserProgram(models.Model):
