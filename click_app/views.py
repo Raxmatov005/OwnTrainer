@@ -212,13 +212,10 @@ class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
 
-    class ClickCompleteAPIView(APIView):
-        permission_classes = [AllowAny]
-        parser_classes = [FormParser, MultiPartParser]
 
-        def post(self, request):
-            logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}")
-            try:
+    def post(self, request):
+        logger.info(f"Click Complete request at {timezone.now()}: Data={request.data}")
+        try:
                 click_trans_id = request.data.get("click_trans_id")
                 service_id = request.data.get("service_id")
                 click_paydoc_id = request.data.get("click_paydoc_id")
@@ -345,7 +342,7 @@ class ClickCompleteAPIView(APIView):
                     return Response({"error": -1}, status=400)
 
                 return Response({"error": 0}, status=200)
-            except Exception as e:
+        except Exception as e:
                 logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
                 return Response({"error": -1}, status=500)
 
