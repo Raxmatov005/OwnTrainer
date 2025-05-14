@@ -51,7 +51,7 @@ class CreateClickOrderView(APIView):
             defaults={"subscription_type": subscription_type, "amount_in_soum": amount, "is_active": False}
         )
         user_subscription.subscription_type = subscription_type
-        user_subscription.amount_in_soum = amount
+        user_subscription.amount_in_soum = amount * 100
         user_subscription.is_active = False
         user_subscription.save()
 
