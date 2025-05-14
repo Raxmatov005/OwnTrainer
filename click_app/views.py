@@ -267,13 +267,13 @@ class ClickCompleteAPIView(APIView):
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum  # Convert to tiyins for comparison
+                expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins for comparison
                 logger.info(
                     f"Subscription ID: {order_id}, amount_in_soum: {subscription.amount_in_soum}, "
                     f"is_active: {subscription.is_active}, start_date: {subscription.start_date}, "
                     f"end_date: {subscription.end_date}"
                 )
-                if amount != expected_amount:
+                if amount != expected_amount * 100:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                     return Response({"error": -1}, status=400)
             except UserSubscription.DoesNotExist:
