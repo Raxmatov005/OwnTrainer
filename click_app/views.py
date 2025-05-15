@@ -43,19 +43,39 @@ class CreateClickOrderView(APIView):
         if not user.is_authenticated:
             return Response({"error": "User must be logged in."}, status=401)
 
-        user_subscription, created = UserSubscription.objects.get_or_create(
+        # Find a pending subscription
+        subscription = UserSubscription.objects.filter(
             user=user,
-            defaults={"subscription_type": subscription_type, "amount_in_soum": amount, "is_active": False}
-        )
-        user_subscription.subscription_type = subscription_type
-        user_subscription.amount_in_soum = amount
-        user_subscription.is_active = False
-        user_subscription.save(update_fields=['subscription_type', 'amount_in_soum', 'is_active'])
+            subscription_type=subscription_type,
+            is_active=False,
+            end_date__isnull=True
+        ).order_by('-start_date', '-id').first()
+
+        if subscription:
+            logger.info(f"Found existing subscription ID: {subscription.id} for user {user.email_or_phone}")
+            subscription.amount_in_soum = amount
+            subscription.start_date = timezone.now().date()
+            subscription.save(update_fields=['amount_in_soum', 'start_date'])
+        else:
+            # Check for active subscription
+            if UserSubscription.objects.filter(user=user, is_active=True).exists():
+                logger.error(f"User {user.email_or_phone} already has an active subscription")
+                return Response({"error": "User already has an active subscription"}, status=400)
+
+            subscription = UserSubscription.objects.create(
+                user=user,
+                subscription_type=subscription_type,
+                amount_in_soum=amount,
+                is_active=False,
+                start_date=timezone.now().date(),
+                end_date=None
+            )
+            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         return_url = 'https://owntrainer.uz/payment-success'
         amount_in_tiyins = amount
         logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
-        pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
+        pay_url = PyClick.generate_url(order_id=subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
         logger.info(f"Generated Click URL: {pay_url}")
         return redirect(pay_url)
 
