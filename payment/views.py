@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
 from pyclick import PyClick
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +20,27 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
         logger.info(f"Payme check_perform_transaction params: {params}")
         try:
-            subscription_id = params.get('account', {}).get('id')
-            if not subscription_id:
-                logger.error("Missing subscription ID in account")
+            # Extract the original subscription ID from the unique transaction ID (e.g., "72_12345678" -> "72")
+            transaction_id = params.get('account', {}).get('id')
+            if not transaction_id:
+                logger.error("Missing transaction ID in account")
                 return response.CheckPerformTransaction(
                     allow=False,
                 ).as_resp()
 
-            subscription = UserSubscription.objects.get(id=subscription_id)
+            subscription_id = transaction_id.split('_')[0]  # Get the base subscription ID
+            if not subscription_id.isdigit():
+                logger.error(f"Invalid subscription ID format: {transaction_id}")
+                return response.CheckPerformTransaction(
+                    allow=False,
+                    reason=-31050,
+                    message="Invalid subscription ID format",
+                    data="account[id]"
+                ).as_resp()
+
+            subscription = UserSubscription.objects.get(id=int(subscription_id))
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum # Convert to tiyins
+            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
 
             logger.info(
                 f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}, subscription ID: {subscription_id}"
@@ -37,6 +49,9 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
                     allow=False,
+                    reason=-31001,
+                    message="Amount mismatch",
+                    data=str(expected_amount)
                 ).as_resp()
 
             logger.info(f"Transaction allowed for subscription ID: {subscription_id}")
@@ -58,9 +73,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_successfully_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        subscription_id = transaction.account.id
+        transaction_id = transaction.account.id
+        subscription_id = transaction_id.split('_')[0]  # Extract base subscription ID
         try:
-            subscription = UserSubscription.objects.get(id=subscription_id)
+            subscription = UserSubscription.objects.get(id=int(subscription_id))
             # Deactivate other active subscriptions
             UserSubscription.objects.filter(
                 user=subscription.user,
@@ -93,9 +109,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_cancelled_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        subscription_id = transaction.account.id
+        transaction_id = transaction.account.id
+        subscription_id = transaction_id.split('_')[0]  # Extract base subscription ID
         try:
-            subscription = UserSubscription.objects.get(id=subscription_id)
+            subscription = UserSubscription.objects.get(id=int(subscription_id))
             subscription.is_active = False
             subscription.pending_extension_type = None
             subscription.save(update_fields=['is_active', 'pending_extension_type'])
@@ -177,7 +194,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount  # Convert so'm to tiyins
+            amount_in_tiyins = amount * 100  # Convert so'm to tiyins
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
