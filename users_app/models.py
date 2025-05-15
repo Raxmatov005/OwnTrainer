@@ -165,8 +165,17 @@ class UserSubscription(models.Model):
     subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
     start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(null=True, blank=True)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
     amount_in_soum = models.IntegerField(null=True, blank=True)  # Store the amount at creation time
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'is_active'],
+                condition=models.Q(is_active=True),
+                name='unique_active_subscription_per_user'
+            )
+        ]
 
     @property
     def amount(self):

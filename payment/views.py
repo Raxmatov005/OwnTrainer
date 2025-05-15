@@ -26,7 +26,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum
+            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
 
             logger.info(
                 f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
@@ -61,8 +61,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             subscription = UserSubscription.objects.get(id=subscription_id)
             add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
             subscription.extend_subscription(add_days)
-            subscription.is_active = True
-            subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
             logger.info(
                 f"✅ Payment successful for subscription ID: {subscription_id}, "
                 f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
@@ -86,7 +84,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
 
-# payme/views.py
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
 
@@ -108,44 +105,34 @@ class UnifiedPaymentInitView(APIView):
         amount = SUBSCRIPTION_COSTS[subscription_type]
         logger.info(f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-        # Try to find a non-active subscription for the user and subscription type
-        try:
-            subscription = UserSubscription.objects.filter(
+        # Find a pending subscription (is_active=False, end_date is null)
+        subscription = UserSubscription.objects.filter(
+            user=user,
+            subscription_type=subscription_type,
+            is_active=False,
+            end_date__isnull=True
+        ).order_by('-start_date', '-id').first()
+
+        if subscription:
+            logger.info(f"Found existing subscription ID: {subscription.id} for user {user.email_or_phone}")
+            subscription.amount_in_soum = amount
+            subscription.start_date = timezone.now().date()
+            subscription.save(update_fields=['amount_in_soum', 'start_date'])
+        else:
+            # Check for active subscription to avoid duplicates
+            if UserSubscription.objects.filter(user=user, is_active=True).exists():
+                logger.error(f"User {user.email_or_phone} already has an active subscription")
+                return Response({"error": "User already has an active subscription"}, status=400)
+
+            subscription = UserSubscription.objects.create(
                 user=user,
                 subscription_type=subscription_type,
-                is_active=False
-            ).order_by('-created_at').first()  # Get the most recent non-active subscription
-
-            if subscription:
-                logger.info(f"Found existing subscription ID: {subscription.id} for user {user.email_or_phone}")
-                # Update existing subscription
-                subscription.amount_in_soum = amount
-                subscription.start_date = timezone.now().date()
-                subscription.save(update_fields=['amount_in_soum', 'start_date'])
-            else:
-                # Create new subscription
-                subscription = UserSubscription.objects.create(
-                    user=user,
-                    subscription_type=subscription_type,
-                    amount_in_soum=amount,
-                    is_active=False,
-                    start_date=timezone.now().date()
-                )
-                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
-
-        except UserSubscription.MultipleObjectsReturned:
-            logger.error(f"Multiple subscriptions found for user {user.email_or_phone}. Attempting cleanup.")
-            # Handle unexpected duplicates by selecting the most recent
-            subscriptions = UserSubscription.objects.filter(user=user).order_by('-created_at')
-            subscription = subscriptions.first()
-            # Optionally, deactivate or delete others
-            subscriptions.exclude(id=subscription.id).update(is_active=False)
-            subscription.subscription_type = subscription_type
-            subscription.amount_in_soum = amount
-            subscription.is_active = False
-            subscription.start_date = timezone.now().date()
-            subscription.save(update_fields=['subscription_type', 'amount_in_soum', 'is_active', 'start_date'])
-            logger.info(f"Selected subscription ID: {subscription.id} for user {user.email_or_phone}")
+                amount_in_soum=amount,
+                is_active=False,
+                start_date=timezone.now().date(),
+                end_date=None
+            )
+            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
             payme_url = generate_payme_docs_style_url(
