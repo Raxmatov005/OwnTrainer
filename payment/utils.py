@@ -2,6 +2,9 @@ import base64
 from django.conf import settings
 from click_app.views import SUBSCRIPTION_COSTS
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) -> str:
     """
@@ -20,14 +23,18 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
         f"m={payme_id};"
         f"ac.id={unique_transaction_id};"
         f"ac.sub_type={subscription_type};"
-        f"a={cost_in_tiyin};"
+        f"a={str(cost_in_tiyin)};"  # Explicitly convert to string
         f"ct={callback_timeout};"
         f"c={return_url}"
     )
+
+    # Log the raw params for debugging
+    logger.info(f"Generated raw Payme params: {raw_params}")
 
     # Base64-encode the string
     encoded_params = base64.b64encode(raw_params.encode()).decode()
 
     # Append the encoded params to the domain
     payme_url = f"https://checkout.paycom.uz/{encoded_params}"
+    logger.info(f"Final Payme URL: {payme_url}")
     return payme_url
