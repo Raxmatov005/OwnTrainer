@@ -43,41 +43,51 @@ class CreateClickOrderView(APIView):
         if not user.is_authenticated:
             return Response({"error": "User must be logged in."}, status=401)
 
-        # Find or create a subscription
+        # Check for an active subscription first
         subscription = UserSubscription.objects.filter(
             user=user,
-            subscription_type=subscription_type,
-            is_active=False,
-            end_date__isnull=True
-        ).order_by('-start_date', '-id').first()
+            is_active=True
+        ).order_by('-end_date', '-id').first()
 
-        if not subscription:
-            # Check for active subscription
-            if UserSubscription.objects.filter(user=user, is_active=True).exists():
-                logger.error(f"User {user.email_or_phone} already has an active subscription")
-                return Response({"error": "User already has an active subscription"}, status=400)
-
-            subscription = UserSubscription.objects.create(
+        if subscription:
+            logger.info(f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
+            subscription.amount_in_soum = amount
+            subscription.pending_extension_type = subscription_type  # Store for callback
+            subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
+        else:
+            # Look for a pending subscription
+            subscription = UserSubscription.objects.filter(
                 user=user,
                 subscription_type=subscription_type,
-                amount_in_soum=amount,
                 is_active=False,
-                start_date=timezone.now().date(),
-                end_date=None
-            )
-            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
-        else:
-            subscription.amount_in_soum = amount
-            subscription.start_date = timezone.now().date()
-            subscription.save(update_fields=['amount_in_soum', 'start_date'])
-            logger.info(f"Reused existing subscription ID: {subscription.id} for user {user.email_or_phone}")
+                end_date__isnull=True
+            ).order_by('-start_date', '-id').first()
+
+            if subscription:
+                logger.info(f"Found pending subscription ID: {subscription.id} for user {user.email_or_phone}")
+                subscription.amount_in_soum = amount
+                subscription.start_date = timezone.now().date()
+                subscription.pending_extension_type = subscription_type
+                subscription.save(update_fields=['amount_in_soum', 'start_date', 'pending_extension_type'])
+            else:
+                subscription = UserSubscription.objects.create(
+                    user=user,
+                    subscription_type=subscription_type,
+                    amount_in_soum=amount,
+                    is_active=False,
+                    start_date=timezone.now().date(),
+                    end_date=None,
+                    pending_extension_type=subscription_type
+                )
+                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         return_url = 'https://owntrainer.uz/payment-success'
-        amount_in_tiyins = amount  # Adjust if Click expects tiyins (100 tiyins = 1 so'm)
+        amount_in_tiyins = amount
         logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
-        pay_url = PyClick.generate_url(order_id=subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
+        pay_url = PyClick.generate_url(order_id=str(subscription.id), amount=str(amount_in_tiyins), return_url=return_url)
         logger.info(f"Generated Click URL: {pay_url}")
         return redirect(pay_url)
+
 
 class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
@@ -418,21 +428,28 @@ class ClickCompleteAPIView(APIView):
                 logger.info(f"Click API confirm response: status={response.status_code}, body={response.text}")
                 if response.status_code == 200 and response.json().get("error_code") == 0:
                     logger.info(f"✅ Payment confirmed with Click API for transaction {click_trans_id}")
-                    # Deactivate other active subscriptions for this user
-                    UserSubscription.objects.filter(
-                        user_id=subscription.user_id,
-                        is_active=True
-                    ).exclude(id=subscription.id).update(is_active=False)
-
-                    # Activate the current subscription and extend it
-                    add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
-                    subscription.extend_subscription(add_days)
-                    subscription.is_active = True
-                    subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
-                    logger.info(
-                        f"✅ Click payment successful for subscription ID: {order_id}, "
-                        f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
-                    )
+                    # Use pending_extension_type if set, otherwise fall back to subscription_type
+                    add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
+                    if subscription.is_active and subscription.end_date:
+                        # Extend the existing active subscription
+                        subscription.end_date = subscription.end_date + timedelta(days=add_days)
+                        subscription.pending_extension_type = None
+                        subscription.save(update_fields=['end_date', 'pending_extension_type'])
+                        logger.info(
+                            f"✅ Extended active subscription ID: {order_id}, "
+                            f"new end_date: {subscription.end_date}"
+                        )
+                    else:
+                        # Activate a new or pending subscription
+                        subscription.extend_subscription(add_days)
+                        subscription.is_active = True
+                        subscription.pending_extension_type = None
+                        subscription.save(update_fields=['start_date', 'end_date', 'is_active', 'pending_extension_type'])
+                        logger.info(
+                            f"✅ Activated subscription ID: {order_id}, "
+                            f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
+                        )
+                    # No need to deactivate other subscriptions due to the unique constraint
                 else:
                     logger.error(f"❌ Failed to confirm payment with Click API: status={response.status_code}, body={response.text}")
                     return Response({
@@ -445,7 +462,8 @@ class ClickCompleteAPIView(APIView):
                     }, status=400)
             elif state < 0:
                 subscription.is_active = False
-                subscription.save(update_fields=['is_active'])
+                subscription.pending_extension_type = None
+                subscription.save(update_fields=['is_active', 'pending_extension_type'])
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}, state: {state}")
                 return Response({
                     "click_trans_id": click_trans_id,

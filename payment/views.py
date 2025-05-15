@@ -27,7 +27,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
+            expected_amount = subscription.amount_in_soum  # Convert to tiyins
 
             logger.info(
                 f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
@@ -60,12 +60,26 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         subscription_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
-            add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
-            subscription.extend_subscription(add_days)
-            logger.info(
-                f"✅ Payment successful for subscription ID: {subscription_id}, "
-                f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
-            )
+            add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
+            if subscription.is_active and subscription.end_date:
+                # Extend the existing active subscription
+                subscription.end_date = subscription.end_date + timedelta(days=add_days)
+                subscription.pending_extension_type = None
+                subscription.save(update_fields=['end_date', 'pending_extension_type'])
+                logger.info(
+                    f"✅ Extended active subscription ID: {subscription_id}, "
+                    f"new end_date: {subscription.end_date}"
+                )
+            else:
+                # Activate a new or pending subscription
+                subscription.extend_subscription(add_days)
+                subscription.is_active = True
+                subscription.pending_extension_type = None
+                subscription.save(update_fields=['start_date', 'end_date', 'is_active', 'pending_extension_type'])
+                logger.info(
+                    f"✅ Activated subscription ID: {subscription_id}, "
+                    f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
+                )
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
         except Exception as e:
@@ -78,7 +92,8 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
             subscription.is_active = False
-            subscription.save(update_fields=['is_active'])
+            subscription.pending_extension_type = None
+            subscription.save(update_fields=['is_active', 'pending_extension_type'])
             logger.info(f"✅ Cancelled payment for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
@@ -106,34 +121,43 @@ class UnifiedPaymentInitView(APIView):
         amount = SUBSCRIPTION_COSTS[subscription_type]
         logger.info(f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-        # Find a pending subscription (is_active=False, end_date is null)
+        # Find or create a subscription
         subscription = UserSubscription.objects.filter(
             user=user,
-            subscription_type=subscription_type,
-            is_active=False,
-            end_date__isnull=True
-        ).order_by('-start_date', '-id').first()
+            is_active=True
+        ).order_by('-end_date', '-id').first()
 
         if subscription:
-            logger.info(f"Found existing subscription ID: {subscription.id} for user {user.email_or_phone}")
+            logger.info(f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
             subscription.amount_in_soum = amount
-            subscription.start_date = timezone.now().date()
-            subscription.save(update_fields=['amount_in_soum', 'start_date'])
+            subscription.pending_extension_type = subscription_type  # Set the pending extension type
+            subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
         else:
-            # Check for active subscription to avoid duplicates
-            if UserSubscription.objects.filter(user=user, is_active=True).exists():
-                logger.error(f"User {user.email_or_phone} already has an active subscription")
-                return Response({"error": "User already has an active subscription"}, status=400)
-
-            subscription = UserSubscription.objects.create(
+            # Look for a pending subscription
+            subscription = UserSubscription.objects.filter(
                 user=user,
                 subscription_type=subscription_type,
-                amount_in_soum=amount,
                 is_active=False,
-                start_date=timezone.now().date(),
-                end_date=None
-            )
-            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
+                end_date__isnull=True
+            ).order_by('-start_date', '-id').first()
+
+            if subscription:
+                logger.info(f"Found pending subscription ID: {subscription.id} for user {user.email_or_phone}")
+                subscription.amount_in_soum = amount
+                subscription.start_date = timezone.now().date()
+                subscription.pending_extension_type = subscription_type
+                subscription.save(update_fields=['amount_in_soum', 'start_date', 'pending_extension_type'])
+            else:
+                subscription = UserSubscription.objects.create(
+                    user=user,
+                    subscription_type=subscription_type,
+                    amount_in_soum=amount,
+                    is_active=False,
+                    start_date=timezone.now().date(),
+                    end_date=None,
+                    pending_extension_type=subscription_type
+                )
+                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
             payme_url = generate_payme_docs_style_url(

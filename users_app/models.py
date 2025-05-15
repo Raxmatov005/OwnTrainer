@@ -12,8 +12,6 @@ from django.dispatch import receiver
 
 
 
-
-
 translator = Translator()
 
 
@@ -160,6 +158,8 @@ class Program(models.Model):
 
 
 
+
+
 class UserSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="subscriptions")
     subscription_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], default='month')
@@ -167,6 +167,7 @@ class UserSubscription(models.Model):
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=False)
     amount_in_soum = models.IntegerField(null=True, blank=True)  # Store the amount at creation time
+    pending_extension_type = models.CharField(max_length=20, choices=[('month', 'Monthly'), ('quarter', '3-Month'), ('year', 'Yearly')], null=True, blank=True)  # New field
 
     class Meta:
         constraints = [
@@ -180,7 +181,7 @@ class UserSubscription(models.Model):
     @property
     def amount(self):
         if self.amount_in_soum is not None:
-            return self.amount_in_soum # Convert to tiyins
+            return self.amount_in_soum  # Convert to tiyins
         from click_app.views import SUBSCRIPTION_COSTS
         return SUBSCRIPTION_COSTS.get(self.subscription_type, 0)
 
@@ -202,39 +203,18 @@ class UserSubscription(models.Model):
 
     def extend_subscription(self, add_days):
         today = timezone.now().date()
-        self.start_date = today  # Always use current date
-        self.end_date = today + timedelta(days=add_days)
+        if not self.end_date or self.end_date < today:  # Only update start_date if extending a lapsed subscription
+            self.start_date = today
+        self.end_date = (self.end_date or self.start_date or today) + timedelta(days=add_days)
         if isinstance(self.end_date, datetime):
             self.end_date = self.end_date.date()
         self.is_active = True
         self.save(update_fields=['start_date', 'end_date', 'is_active'])
 
-# @receiver(post_save, sender=UserSubscription)
-# def create_sessions_on_subscription(sender, instance, created, **kwargs):
-#     if created or instance.is_active:
-#         from users_app.models import Program, UserProgram
-#         # Select or create a Program based on user.goal
-#         user = instance.user
-#         program = None
-#         if user.goal:
-#             program = Program.objects.filter(program_goal=user.goal, is_active=True).first()
-#         if not program:
-#             # Create a default Program if none exists
-#             program = Program.objects.create(
-#                 program_goal=user.goal or 'gain_muscle',
-#                 is_active=True
-#             )
-#         # Ensure UserProgram exists
-#         user_program, _ = UserProgram.objects.get_or_create(
-#             user=user,
-#             defaults={'program': program, 'is_active': True}
-#         )
-#         if not user_program.program:
-#             user_program.program = program
-#             user_program.save()
-#         # Call create_sessions_for_user with user and program
-#         from users_app.views import create_sessions_for_user
-#         create_sessions_for_user(user, program)
+    def __str__(self):
+        return f"{self.user.email_or_phone} - {self.subscription_type} - Active: {self.is_active}"
+
+
 
 
 class UserProgram(models.Model):
