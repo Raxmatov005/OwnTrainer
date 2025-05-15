@@ -10,6 +10,7 @@ from .utils import generate_payme_docs_style_url
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
+from pyclick import PyClick
 
 logger = logging.getLogger(__name__)
 
