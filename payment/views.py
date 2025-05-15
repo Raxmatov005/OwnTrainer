@@ -14,6 +14,7 @@ from pyclick import PyClick
 
 logger = logging.getLogger(__name__)
 
+
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
         logger.info(f"Payme check_perform_transaction params: {params}")
@@ -27,10 +28,10 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum  # Convert to tiyins
+            expected_amount = subscription.amount_in_soum # Convert to tiyins
 
             logger.info(
-                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
+                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}, subscription ID: {subscription_id}"
             )
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
@@ -38,7 +39,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     allow=False,
                 ).as_resp()
 
-            logger.info("Transaction allowed")
+            logger.info(f"Transaction allowed for subscription ID: {subscription_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
             logger.error(f"Invalid subscription ID: {subscription_id}")
@@ -60,9 +61,14 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         subscription_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
+            # Deactivate other active subscriptions
+            UserSubscription.objects.filter(
+                user=subscription.user,
+                is_active=True
+            ).exclude(id=subscription.id).update(is_active=False, end_date=None)
+
             add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
             if subscription.is_active and subscription.end_date:
-                # Extend the existing active subscription
                 subscription.end_date = subscription.end_date + timedelta(days=add_days)
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['end_date', 'pending_extension_type'])
@@ -71,7 +77,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     f"new end_date: {subscription.end_date}"
                 )
             else:
-                # Activate a new or pending subscription
                 subscription.extend_subscription(add_days)
                 subscription.is_active = True
                 subscription.pending_extension_type = None
@@ -100,6 +105,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
 
+
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
 
@@ -119,7 +125,8 @@ class UnifiedPaymentInitView(APIView):
             return Response({"error": "User must be logged in."}, status=401)
 
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        logger.info(f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+        logger.info(
+            f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
         # Find or create a subscription
         subscription = UserSubscription.objects.filter(
@@ -128,9 +135,10 @@ class UnifiedPaymentInitView(APIView):
         ).order_by('-end_date', '-id').first()
 
         if subscription:
-            logger.info(f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
+            logger.info(
+                f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
             subscription.amount_in_soum = amount
-            subscription.pending_extension_type = subscription_type  # Set the pending extension type
+            subscription.pending_extension_type = subscription_type
             subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
         else:
             # Look for a pending subscription
@@ -169,7 +177,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount
+            amount_in_tiyins = amount  # Convert so'm to tiyins
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
