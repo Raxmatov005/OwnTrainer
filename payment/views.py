@@ -5,13 +5,11 @@ from users_app.models import UserSubscription
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.response import Response
-from click_app.views import SUBSCRIPTION_DAYS, SUBSCRIPTION_COSTS, PyClick
+from click_app.views import SUBSCRIPTION_DAYS, SUBSCRIPTION_COSTS
 from .utils import generate_payme_docs_style_url
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             subscription = UserSubscription.objects.get(id=subscription_id)
             amount = int(params.get('amount'))
-            expected_amount = subscription.amount_in_soum  # Ensure tiyins conversion
+            expected_amount = subscription.amount_in_soum
 
             logger.info(
                 f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}"
@@ -63,12 +61,12 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             subscription = UserSubscription.objects.get(id=subscription_id)
             add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
             subscription.extend_subscription(add_days)
-            subscription.is_active = True  # Explicitly set is_active
-            subscription.save()
-            logger.info(f"✅ Payment successful for subscription ID: {subscription_id}")
-            # Assuming create_sessions_for_user is defined elsewhere
-            from users_app.views import create_sessions_for_user
-            create_sessions_for_user(subscription.user)
+            subscription.is_active = True
+            subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
+            logger.info(
+                f"✅ Payment successful for subscription ID: {subscription_id}, "
+                f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
+            )
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
         except Exception as e:
@@ -81,16 +79,12 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         try:
             subscription = UserSubscription.objects.get(id=subscription_id)
             subscription.is_active = False
-            subscription.save()
+            subscription.save(update_fields=['is_active'])
             logger.info(f"✅ Cancelled payment for subscription ID: {subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {subscription_id}")
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
-
-
-
-
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
@@ -110,16 +104,22 @@ class UnifiedPaymentInitView(APIView):
         amount = SUBSCRIPTION_COSTS[subscription_type]
         logger.info(f"Creating subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
-
-        subscription = UserSubscription.objects.create(
+        subscription, created = UserSubscription.objects.get_or_create(
             user=user,
-            subscription_type=subscription_type,
-            amount_in_soum=amount,
-            is_active=False,
-            start_date=timezone.now().date()
+            defaults={
+                "subscription_type": subscription_type,
+                "amount_in_soum": amount,
+                "is_active": False,
+                "start_date": timezone.now().date()
+            }
         )
-        logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
-
+        if not created:
+            subscription.subscription_type = subscription_type
+            subscription.amount_in_soum = amount
+            subscription.is_active = False
+            subscription.start_date = timezone.now().date()
+            subscription.save(update_fields=['subscription_type', 'amount_in_soum', 'is_active', 'start_date'])
+        logger.info(f"{'Created new' if created else 'Updated existing'} subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
             payme_url = generate_payme_docs_style_url(
@@ -127,11 +127,10 @@ class UnifiedPaymentInitView(APIView):
                 user_program_id=subscription.id
             )
             logger.info(f"Payme redirect URL: {payme_url}")
-
             return Response({"redirect_url": payme_url})
 
         elif payment_method == "click":
-            return_url = "https://owntrainer.uz/payment/success"
+            return_url = "https://owntrainer.uz/payment-success"
             amount_in_tiyins = amount
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),

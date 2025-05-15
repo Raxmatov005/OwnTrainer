@@ -15,8 +15,6 @@ import requests
 import time
 from register import settings
 
-
-
 # Subscription pricing and durations
 SUBSCRIPTION_COSTS = {
     'month': 1000,
@@ -41,7 +39,6 @@ class CreateClickOrderView(APIView):
 
         subscription_type = serializer.validated_data['subscription_type']
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        add_days = SUBSCRIPTION_DAYS[subscription_type]
         user = request.user
         if not user.is_authenticated:
             return Response({"error": "User must be logged in."}, status=401)
@@ -53,9 +50,9 @@ class CreateClickOrderView(APIView):
         user_subscription.subscription_type = subscription_type
         user_subscription.amount_in_soum = amount
         user_subscription.is_active = False
-        user_subscription.save()
+        user_subscription.save(update_fields=['subscription_type', 'amount_in_soum', 'is_active'])
 
-        return_url = 'https://owntrainer.uz/'
+        return_url = 'https://owntrainer.uz/payment-success'
         amount_in_tiyins = amount
         logger.info(f"Generating Click URL with amount: {amount_in_tiyins} tiyins")
         pay_url = PyClick.generate_url(order_id=user_subscription.id, amount=str(amount_in_tiyins), return_url=return_url)
@@ -66,7 +63,7 @@ class OrderCheckAndPayment(PyClick):
     def check_order(self, order_id: str, amount: str):
         try:
             subscription = UserSubscription.objects.get(id=order_id)
-            expected_amount = subscription.amount_in_soum  # Convert to tiyins
+            expected_amount = subscription.amount_in_soum
             if int(amount) == expected_amount:
                 return self.ORDER_FOUND
             return self.INVALID_AMOUNT
@@ -79,10 +76,9 @@ class OrderCheckAndPayment(PyClick):
             logger.info(f"✅ Payment received for user {user_subscription.user.email_or_phone}")
             add_days = SUBSCRIPTION_DAYS[user_subscription.subscription_type]
             user_subscription.extend_subscription(add_days)
+            user_subscription.is_active = True
+            user_subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
             logger.info(f"✅ Subscription extended for {user_subscription.user.email_or_phone} by {add_days} days")
-            # Assuming create_sessions_for_user is defined elsewhere
-            from users_app.views import create_sessions_for_user
-            create_sessions_for_user(user_subscription.user)
             PyClick.confirm_transaction(transaction.transaction_id)
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {order_id}")
@@ -93,7 +89,7 @@ class OrderCheckAndPayment(PyClick):
         try:
             user_subscription = UserSubscription.objects.get(id=user_subscription_id)
             user_subscription.is_active = False
-            user_subscription.save()
+            user_subscription.save(update_fields=['is_active'])
             logger.info(f"✅ Cancelled payment for subscription ID: {user_subscription_id}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {user_subscription_id}")
@@ -114,7 +110,6 @@ class OrderTestView(PyClickMerchantAPIView):
             }, status=400)
         return super().post(request, *args, **kwargs)
 
-
 class ClickPrepareAPIView(APIView):
     permission_classes = [AllowAny]
     parser_classes = [FormParser, MultiPartParser]
@@ -133,24 +128,29 @@ class ClickPrepareAPIView(APIView):
             sign_time = request.data.get("sign_time")
             sign_string = request.data.get("sign_string")
 
-            required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, action, sign_time,
-                               sign_string]
+            required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, action, sign_time, sign_string]
             if not all(required_params):
                 logger.error(f"Missing required parameters: {request.data}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id or "",
+                    "merchant_trans_id": order_id or "",
+                    "merchant_prepare_id": merchant_prepare_id or "",
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Missing required parameters"
+                }, status=400)
 
-            # Ensure params are not lists if they were parsed as such
-            click_trans_id = click_trans_id if isinstance(click_trans_id, list) else click_trans_id
-            service_id = service_id if isinstance(service_id, list) else service_id
-            click_paydoc_id = click_paydoc_id if isinstance(click_paydoc_id, list) else click_paydoc_id
-            order_id = order_id if isinstance(order_id, list) else order_id
-            merchant_prepare_id = merchant_prepare_id if isinstance(merchant_prepare_id, list) else merchant_prepare_id
-            amount = amount if isinstance(amount, list) else amount
-            action = action if isinstance(action, list) else action
-            sign_time = sign_time if isinstance(sign_time, list) else sign_time
-            sign_string = sign_string if isinstance(sign_string, list) else sign_string
+            # Handle list parameters
+            click_trans_id = click_trans_id[0] if isinstance(click_trans_id, list) else click_trans_id
+            service_id = service_id[0] if isinstance(service_id, list) else service_id
+            click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
+            order_id = order_id[0] if isinstance(order_id, list) else order_id
+            merchant_prepare_id = merchant_prepare_id[0] if isinstance(merchant_prepare_id, list) else merchant_prepare_id
+            amount = amount[0] if isinstance(amount, list) else amount
+            action = action[0] if isinstance(action, list) else action
+            sign_time = sign_time[0] if isinstance(sign_time, list) else sign_time
+            sign_string = sign_string[0] if isinstance(sign_string, list) else sign_string
 
-            # Log all parameters for debugging
             logger.info(f"click_trans_id: {click_trans_id}")
             logger.info(f"service_id: {service_id}")
             logger.info(f"merchant_prepare_id: {merchant_prepare_id}")
@@ -160,11 +160,9 @@ class ClickPrepareAPIView(APIView):
             logger.info(f"action: {action}")
             logger.info(f"sign_time: {sign_time}")
 
-            # Validate sign_string as per Click support's instruction
             secret_key = settings.CLICK_SETTINGS['secret_key']
             logger.info(f"Using secret_key: {secret_key}")
 
-            # Adjust sign_input based on action: exclude merchant_prepare_id for action=0
             if action == '0':
                 sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{amount}{action}{sign_time}"
             else:
@@ -176,37 +174,84 @@ class ClickPrepareAPIView(APIView):
 
             if sign_string.lower() != expected_sign.lower():
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
-                return Response({"error": -4}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -4,
+                    "error_note": "Invalid sign string"
+                }, status=400)
 
             try:
                 amount = int(amount)
             except ValueError:
-                logger.error(f"Invalid amount format: {amount}, data: {request.data}")
-                return Response({"error": -1}, status=400)
+                logger.error(f"Invalid amount format: {amount}")
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Invalid amount format"
+                }, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
                 expected_amount = subscription.amount_in_soum
                 logger.debug(f"Expected amount: {expected_amount} tiyins, received: {amount} tiyins")
-
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                    return Response({"error": -1}, status=400)
+                    return Response({
+                        "click_trans_id": click_trans_id,
+                        "merchant_trans_id": order_id,
+                        "merchant_prepare_id": merchant_prepare_id,
+                        "merchant_confirm_id": "",
+                        "error": -1,
+                        "error_note": "Amount mismatch"
+                    }, status=400)
             except UserSubscription.DoesNotExist:
                 logger.error(f"Subscription not found for order_id: {order_id}")
-                return Response({"error": -1}, status=404)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Subscription not found"
+                }, status=404)
 
             if str(service_id) != str(settings.CLICK_SETTINGS['service_id']):
                 logger.error(f"Invalid service_id: {service_id}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Invalid service ID"
+                }, status=400)
 
             logger.info(f"Prepare request validated successfully for order_id {order_id}")
-            return Response({"error": 0, "merchant_prepare_id": merchant_prepare_id}, status=200)
+            return Response({
+                "click_trans_id": click_trans_id,
+                "merchant_trans_id": order_id,
+                "merchant_prepare_id": merchant_prepare_id,
+                "merchant_confirm_id": "",
+                "error": 0,
+                "error_note": "Success"
+            }, status=200)
 
         except Exception as e:
             logger.error(f"Unexpected error in Click Prepare: {str(e)}, data: {request.data}", exc_info=True)
-            return Response({"error": -1}, status=500)
-
+            return Response({
+                "click_trans_id": click_trans_id or "",
+                "merchant_trans_id": order_id or "",
+                "merchant_prepare_id": merchant_prepare_id or "",
+                "merchant_confirm_id": "",
+                "error": -1,
+                "error_note": f"Internal server error: {str(e)}"
+            }, status=500)
 
 class ClickCompleteAPIView(APIView):
     permission_classes = [AllowAny]
@@ -229,9 +274,15 @@ class ClickCompleteAPIView(APIView):
             required_params = [click_trans_id, service_id, click_paydoc_id, order_id, amount, state, action, sign_time, sign_string]
             if not all(required_params):
                 logger.error(f"Missing required parameters: {request.data}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id or "",
+                    "merchant_trans_id": order_id or "",
+                    "merchant_prepare_id": merchant_prepare_id or "",
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Missing required parameters"
+                }, status=400)
 
-            # Handle list parameters
             click_trans_id = click_trans_id[0] if isinstance(click_trans_id, list) else click_trans_id
             service_id = service_id[0] if isinstance(service_id, list) else service_id
             click_paydoc_id = click_paydoc_id[0] if isinstance(click_paydoc_id, list) else click_paydoc_id
@@ -248,26 +299,43 @@ class ClickCompleteAPIView(APIView):
                 f"order_id={order_id}, amount={amount}, state={state}, action={action}, sign_time={sign_time}"
             )
 
-            # Validate sign_string
             secret_key = settings.CLICK_SETTINGS['secret_key']
             sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{merchant_prepare_id}{amount}{action}{sign_time}"
             expected_sign = hashlib.md5(sign_input.encode()).hexdigest()
             logger.info(f"Sign input: {sign_input}")
             logger.info(f"Expected sign: {expected_sign}, Received sign: {sign_string}")
-            if sign_string != expected_sign:
+            if sign_string.lower() != expected_sign.lower():
                 logger.error(f"Invalid sign_string: expected {expected_sign}, got {sign_string}")
-                return Response({"error": -4}, status=400)
+                alt_sign_input = f"{click_trans_id}{service_id}{secret_key}{order_id}{amount}{action}{sign_time}"
+                alt_expected_sign = hashlib.md5(alt_sign_input.encode()).hexdigest()
+                logger.info(f"Alternative sign input (no merchant_prepare_id): {alt_sign_input}")
+                logger.info(f"Alternative expected sign: {alt_expected_sign}")
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -4,
+                    "error_note": "Invalid sign string"
+                }, status=400)
 
             try:
                 amount = int(amount)
                 state = int(state)
             except ValueError:
                 logger.error(f"Invalid amount or state format: amount={amount}, state={state}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Invalid amount or state format"
+                }, status=400)
 
             try:
                 subscription = UserSubscription.objects.get(id=order_id)
-                expected_amount = subscription.amount_in_soum  # Convert to tiyins for comparison
+                expected_amount = subscription.amount_in_soum
                 logger.info(
                     f"Subscription ID: {order_id}, amount_in_soum: {subscription.amount_in_soum}, "
                     f"is_active: {subscription.is_active}, start_date: {subscription.start_date}, "
@@ -275,16 +343,38 @@ class ClickCompleteAPIView(APIView):
                 )
                 if amount != expected_amount:
                     logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                    return Response({"error": -1}, status=400)
+                    return Response({
+                        "click_trans_id": click_trans_id,
+                        "merchant_trans_id": order_id,
+                        "merchant_prepare_id": merchant_prepare_id,
+                        "merchant_confirm_id": "",
+                        "error": -1,
+                        "error_note": "Amount mismatch"
+                    }, status=400)
             except UserSubscription.DoesNotExist:
                 logger.error(f"Subscription not found for order_id: {order_id}")
-                return Response({"error": -1}, status=404)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Subscription not found"
+                }, status=404)
 
             if str(service_id) != str(settings.CLICK_SETTINGS['service_id']):
                 logger.error(f"Invalid service_id: {service_id}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": "",
+                    "error": -1,
+                    "error_note": "Invalid service ID"
+                }, status=400)
 
             logger.info(f"Processing Click payment for subscription ID: {order_id}, state: {state}")
+            merchant_confirm_id = click_paydoc_id
             if state == 0:
                 merchant_user_id = settings.CLICK_SETTINGS['merchant_user_id']
                 secret_key = settings.CLICK_SETTINGS['secret_key']
@@ -310,30 +400,80 @@ class ClickCompleteAPIView(APIView):
                     subscription.is_active = True
                     add_days = SUBSCRIPTION_DAYS.get(subscription.subscription_type, 30)
                     subscription.extend_subscription(add_days)
-                    subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
-                    logger.info(
-                        f"✅ Click payment successful for subscription ID: {order_id}, "
-                        f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
-                    )
-                    # Remove the call to create_sessions_for_user since you don't need it
-                    # from users_app.views import create_sessions_for_user
-                    # create_sessions_for_user(subscription.user)
+                    try:
+                        subscription.save(update_fields=['start_date', 'end_date', 'is_active'])
+                        logger.info(
+                            f"✅ Click payment successful for subscription ID: {order_id}, "
+                            f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save subscription for ID: {order_id}, error: {str(e)}")
+                        return Response({
+                            "click_trans_id": click_trans_id,
+                            "merchant_trans_id": order_id,
+                            "merchant_prepare_id": merchant_prepare_id,
+                            "merchant_confirm_id": merchant_confirm_id,
+                            "error": -1,
+                            "error_note": "Failed to save subscription"
+                        }, status=500)
                 else:
-                    logger.error(
-                        f"❌ Failed to confirm payment with Click API: status={response.status_code}, body={response.text}")
-                    return Response({"error": -1}, status=400)
+                    logger.error(f"❌ Failed to confirm payment with Click API: status={response.status_code}, body={response.text}")
+                    return Response({
+                        "click_trans_id": click_trans_id,
+                        "merchant_trans_id": order_id,
+                        "merchant_prepare_id": merchant_prepare_id,
+                        "merchant_confirm_id": merchant_confirm_id,
+                        "error": -1,
+                        "error_note": "Failed to confirm payment"
+                    }, status=400)
             elif state < 0:
                 subscription.is_active = False
                 subscription.save(update_fields=['is_active'])
                 logger.info(f"❌ Click payment failed for subscription ID: {order_id}, state: {state}")
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": merchant_confirm_id,
+                    "error": state,
+                    "error_note": request.data.get("error_note", "Payment failed")
+                }, status=400)
             else:
                 logger.warning(f"Unknown state/error: {state}")
-                return Response({"error": -1}, status=400)
+                return Response({
+                    "click_trans_id": click_trans_id,
+                    "merchant_trans_id": order_id,
+                    "merchant_prepare_id": merchant_prepare_id,
+                    "merchant_confirm_id": merchant_confirm_id,
+                    "error": -1,
+                    "error_note": "Unknown state"
+                }, status=400)
 
-            return Response({"error": 0}, status=200)
+            return Response({
+                "click_trans_id": click_trans_id,
+                "merchant_trans_id": order_id,
+                "merchant_prepare_id": merchant_prepare_id,
+                "merchant_confirm_id": merchant_confirm_id,
+                "error": 0,
+                "error_note": "Success"
+            }, status=200)
         except Exception as e:
             logger.error(f"Error in Click Complete: {str(e)}, data: {request.data}", exc_info=True)
-            return Response({"error": -1}, status=500)
+            return Response({
+                "click_trans_id": click_trans_id or "",
+                "merchant_trans_id": order_id or "",
+                "merchant_prepare_id": merchant_prepare_id or "",
+                "merchant_confirm_id": "",
+                "error": -1,
+                "error_note": f"Internal server error: {str(e)}"
+            }, status=500)
+
+class PaymentSuccessView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        logger.info(f"Payment success redirect at {timezone.now()}: Data={request.GET}")
+        return Response({"message": "Payment successful, redirecting..."}, status=200)
 
 class HealthCheckAPIView(APIView):
     permission_classes = [AllowAny]
