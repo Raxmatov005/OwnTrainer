@@ -10,40 +10,37 @@ from .utils import generate_payme_docs_style_url
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
-from pyclick import PyClick
 import uuid
 
 logger = logging.getLogger(__name__)
-
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
         logger.info(f"Payme check_perform_transaction params: {params}")
         try:
-            # Extract the original subscription ID from the unique transaction ID (e.g., "72_12345678" -> "72")
-            transaction_id = params.get('account', {}).get('id')
-            if not transaction_id:
-                logger.error("Missing transaction ID in account")
+            transaction_id = params.get('id')  # Payme's transaction ID
+            account_id = params.get('account', {}).get('id')
+            if not account_id or not transaction_id:
+                logger.error("Missing account ID or transaction ID in params")
                 return response.CheckPerformTransaction(
                     allow=False,
                 ).as_resp()
 
-            subscription_id = transaction_id.split('_')[0]  # Get the base subscription ID
-            if not subscription_id.isdigit():
-                logger.error(f"Invalid subscription ID format: {transaction_id}")
+            if not account_id.isdigit():
+                logger.error(f"Invalid account ID format: {account_id}")
                 return response.CheckPerformTransaction(
                     allow=False,
                     reason=-31050,
-                    message="Invalid subscription ID format",
+                    message="Invalid account ID format",
                     data="account[id]"
                 ).as_resp()
 
-            subscription = UserSubscription.objects.get(id=int(subscription_id))
+            subscription = UserSubscription.objects.get(id=int(account_id))
             amount = int(params.get('amount'))
             expected_amount = subscription.amount_in_soum * 100  # Convert to tiyins
 
             logger.info(
-                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}, subscription ID: {subscription_id}"
+                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}, subscription ID: {account_id}"
             )
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
@@ -54,10 +51,12 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     data=str(expected_amount)
                 ).as_resp()
 
-            logger.info(f"Transaction allowed for subscription ID: {subscription_id}")
+            # Check if this transaction has been processed (using transaction_ref if implemented)
+            # For now, rely on Payme to handle uniqueness
+            logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction ID: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
-            logger.error(f"Invalid subscription ID: {subscription_id}")
+            logger.error(f"Invalid subscription ID: {account_id}")
             return response.CheckPerformTransaction(
                 allow=False,
                 reason=-31050,
@@ -73,10 +72,9 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_successfully_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        transaction_id = transaction.account.id
-        subscription_id = transaction_id.split('_')[0]  # Extract base subscription ID
+        account_id = transaction.account.id
         try:
-            subscription = UserSubscription.objects.get(id=int(subscription_id))
+            subscription = UserSubscription.objects.get(id=int(account_id))
             # Deactivate other active subscriptions
             UserSubscription.objects.filter(
                 user=subscription.user,
@@ -89,7 +87,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['end_date', 'pending_extension_type'])
                 logger.info(
-                    f"✅ Extended active subscription ID: {subscription_id}, "
+                    f"✅ Extended active subscription ID: {account_id}, "
                     f"new end_date: {subscription.end_date}"
                 )
             else:
@@ -98,30 +96,28 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['start_date', 'end_date', 'is_active', 'pending_extension_type'])
                 logger.info(
-                    f"✅ Activated subscription ID: {subscription_id}, "
+                    f"✅ Activated subscription ID: {account_id}, "
                     f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
                 )
         except UserSubscription.DoesNotExist:
-            logger.error(f"❌ No subscription found with ID: {subscription_id}")
+            logger.error(f"❌ No subscription found with ID: {account_id}")
         except Exception as e:
             logger.error(f"Error in handle_successfully_payment: {str(e)}")
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_cancelled_payment params: {params}")
         transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        transaction_id = transaction.account.id
-        subscription_id = transaction_id.split('_')[0]  # Extract base subscription ID
+        account_id = transaction.account.id
         try:
-            subscription = UserSubscription.objects.get(id=int(subscription_id))
+            subscription = UserSubscription.objects.get(id=int(account_id))
             subscription.is_active = False
             subscription.pending_extension_type = None
             subscription.save(update_fields=['is_active', 'pending_extension_type'])
-            logger.info(f"✅ Cancelled payment for subscription ID: {subscription_id}")
+            logger.info(f"✅ Cancelled payment for subscription ID: {account_id}")
         except UserSubscription.DoesNotExist:
-            logger.error(f"❌ No subscription found with ID: {subscription_id}")
+            logger.error(f"❌ No subscription found with ID: {account_id}")
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
-
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
@@ -142,8 +138,7 @@ class UnifiedPaymentInitView(APIView):
             return Response({"error": "User must be logged in."}, status=401)
 
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        logger.info(
-            f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+        logger.info(f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
         # Find or create a subscription
         subscription = UserSubscription.objects.filter(
@@ -152,8 +147,7 @@ class UnifiedPaymentInitView(APIView):
         ).order_by('-end_date', '-id').first()
 
         if subscription:
-            logger.info(
-                f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
+            logger.info(f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
             subscription.amount_in_soum = amount
             subscription.pending_extension_type = subscription_type
             subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
