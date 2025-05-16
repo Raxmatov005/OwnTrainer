@@ -10,7 +10,7 @@ from .utils import generate_payme_docs_style_url
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
-import uuid
+from pyclick import PyClick
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     data=str(expected_amount)
                 ).as_resp()
 
-            # Check if this transaction has been processed (using transaction_ref if implemented)
-            # For now, rely on Payme to handle uniqueness
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction ID: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
@@ -179,6 +177,18 @@ class UnifiedPaymentInitView(APIView):
                 logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
+            # Cancel any existing Payme transactions for this subscription ID
+            existing_transactions = PaymeTransactions.objects.filter(
+                account__id=subscription.id,
+                state__in=[PaymeTransactions.STATE_CREATED, PaymeTransactions.STATE_IN_PROGRESS]
+            )
+            for transaction in existing_transactions:
+                try:
+                    transaction.cancel(reason="Initiating new payment")
+                    logger.info(f"Cancelled existing Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
+                except Exception as e:
+                    logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {str(e)}")
+
             payme_url = generate_payme_docs_style_url(
                 subscription_type=subscription_type,
                 user_program_id=subscription.id
@@ -188,7 +198,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount  # Convert so'm to tiyins
+            amount_in_tiyins = amount # Convert so'm to tiyins
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
