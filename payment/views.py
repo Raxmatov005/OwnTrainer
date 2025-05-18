@@ -193,7 +193,7 @@ class UnifiedPaymentInitView(APIView):
                 logger.info(f"Existing transaction: ID {transaction.transaction_id}, State {transaction.state}, Account ID {transaction.account_id}")
 
             # Generate a unique account ID for Payme to avoid duplicate checks
-            unique_account_id = f"{subscription.id}_{int(timezone.now().timestamp())}"
+            unique_account_id = f"{subscription.id}"
             logger.info(f"Using unique account ID for Payme: {unique_account_id}")
 
             payme_url = generate_payme_docs_style_url(
