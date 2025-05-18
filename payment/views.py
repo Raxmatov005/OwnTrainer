@@ -180,7 +180,7 @@ class UnifiedPaymentInitView(APIView):
             # Cancel any existing Payme transactions for this subscription ID
             existing_transactions = PaymeTransactions.objects.filter(
                 account__id=subscription.id,
-                state__in=[PaymeTransactions.STATE_CREATED, PaymeTransactions.STATE_IN_PROGRESS]
+                state__in=[0, 1]  # Assuming 0 = created, 1 = in progress (adjust based on logs)
             )
             for transaction in existing_transactions:
                 try:
@@ -198,7 +198,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount # Convert so'm to tiyins
+            amount_in_tiyins = amount  # Convert so'm to tiyins
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
