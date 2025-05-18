@@ -11,10 +11,13 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
 from pyclick import PyClick
-from payme import Payme
 from django.conf import settings
+import requests
+import base64
+import json
 
 logger = logging.getLogger(__name__)
+
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def check_perform_transaction(self, params):
@@ -119,6 +122,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
 
+
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
 
@@ -138,7 +142,8 @@ class UnifiedPaymentInitView(APIView):
             return Response({"error": "User must be logged in."}, status=401)
 
         amount = SUBSCRIPTION_COSTS[subscription_type]
-        logger.info(f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+        logger.info(
+            f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
 
         # Find or create a subscription
         subscription = UserSubscription.objects.filter(
@@ -147,7 +152,8 @@ class UnifiedPaymentInitView(APIView):
         ).order_by('-end_date', '-id').first()
 
         if subscription:
-            logger.info(f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
+            logger.info(
+                f"Found active subscription ID: {subscription.id} for user {user.email_or_phone}, will extend duration")
             subscription.amount_in_soum = amount
             subscription.pending_extension_type = subscription_type
             subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
@@ -182,7 +188,8 @@ class UnifiedPaymentInitView(APIView):
             # Log existing transactions for debugging
             existing_transactions = PaymeTransactions.objects.filter(account__id=subscription.id)
             for transaction in existing_transactions:
-                logger.info(f"Existing transaction: ID {transaction.transaction_id}, State {transaction.state}, Account ID {transaction.account_id}")
+                logger.info(
+                    f"Existing transaction: ID {transaction.transaction_id}, State {transaction.state}, Account ID {transaction.account_id}")
 
             # Cancel any existing Payme transactions for this subscription ID
             pending_transactions = PaymeTransactions.objects.filter(
@@ -191,18 +198,41 @@ class UnifiedPaymentInitView(APIView):
             )
             for transaction in pending_transactions:
                 try:
-                    # Initialize Payme service with merchant credentials
-                    payme = Payme(
-                        login=settings.PAYME_ID or '6745ef53e64d929b0e460d81',  # Fallback to logs if env var missing
-                        key=settings.PAYME_KEY or ''  # Must be set via env var
+                    # Prepare Basic Auth header
+                    auth_str = f"Paycom:{settings.PAYME_KEY}"
+                    auth_header = "Basic " + base64.b64encode(auth_str.encode()).decode()
+
+                    # Prepare payload for CancelTransaction
+                    payload = {
+                        "id": f"cancel_{transaction.transaction_id}_{int(timezone.now().timestamp())}",
+                        # Unique request ID
+                        "method": "CancelTransaction",
+                        "params": {
+                            "id": transaction.transaction_id
+                        }
+                    }
+
+                    # Make the API call
+                    response = requests.post(
+                        "https://checkout.paycom.uz/api",
+                        headers={
+                            "X-Auth": auth_header,
+                            "Content-Type": "application/json"
+                        },
+                        json=payload
                     )
-                    payme.cancel_transaction(transaction_id=transaction.transaction_id)
-                    logger.info(f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
-                    # Update local state to reflect cancellation
-                    transaction.state = -1
-                    transaction.save()
-                    transaction.refresh_from_db()
-                    logger.info(f"Confirmed transaction state after cancellation: {transaction.state}")
+                    response_data = response.json()
+
+                    if response.status_code == 200 and 'result' in response_data:
+                        logger.info(
+                            f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
+                        # Update local state to reflect cancellation
+                        transaction.state = -1
+                        transaction.save()
+                        transaction.refresh_from_db()
+                        logger.info(f"Confirmed transaction state after cancellation: {transaction.state}")
+                    else:
+                        logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {response_data}")
                 except Exception as e:
                     logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {str(e)}")
 
