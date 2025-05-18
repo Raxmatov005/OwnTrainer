@@ -1,6 +1,8 @@
 import base64
 import hashlib
+import logging
 
+logger = logging.getLogger(__name__)
 
 def generate_payme_docs_style_url(subscription_type, user_program_id):
     merchant_id = "6745ef53e64d929b0e460d81"  # Replace with your actual merchant ID
