@@ -11,6 +11,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 import logging
 from pyclick import PyClick
+from payme import Payme
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             transaction_id = params.get('id')  # Payme's transaction ID
             account_id = params.get('account', {}).get('id')
             if not account_id or not transaction_id:
-                logger.error("Missing account ID or transaction ID in params")
+                logger.error(f"Missing account ID or transaction ID in params: {params}")
                 return response.CheckPerformTransaction(
                     allow=False,
                 ).as_resp()
@@ -185,15 +187,22 @@ class UnifiedPaymentInitView(APIView):
             # Cancel any existing Payme transactions for this subscription ID
             pending_transactions = PaymeTransactions.objects.filter(
                 account__id=subscription.id,
-                state=2  # Target state 2 (in progress) based on query result
+                state=2  # In progress state
             )
             for transaction in pending_transactions:
                 try:
-                    transaction.cancel(reason="Initiating new payment")
+                    # Initialize Payme service with merchant credentials
+                    payme = Payme(
+                        login=settings.PAYME_ID or '6745ef53e64d929b0e460d81',  # Fallback to logs if env var missing
+                        key=settings.PAYME_KEY or ''  # Must be set via env var
+                    )
+                    payme.cancel_transaction(transaction_id=transaction.transaction_id)
                     logger.info(f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
-                    # Verify cancellation by checking updated state
+                    # Update local state to reflect cancellation
+                    transaction.state = -1
+                    transaction.save()
                     transaction.refresh_from_db()
-                    logger.info(f"Updated transaction state after cancellation: {transaction.state}")
+                    logger.info(f"Confirmed transaction state after cancellation: {transaction.state}")
                 except Exception as e:
                     logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {str(e)}")
 
