@@ -177,15 +177,23 @@ class UnifiedPaymentInitView(APIView):
                 logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
 
         if payment_method == "payme":
-            # Cancel any existing Payme transactions for this subscription ID
-            existing_transactions = PaymeTransactions.objects.filter(
-                account__id=subscription.id,
-                state__in=[0, 1]  # Assuming 0 = created, 1 = in progress (adjust based on logs)
-            )
+            # Log existing transactions for debugging
+            existing_transactions = PaymeTransactions.objects.filter(account__id=subscription.id)
             for transaction in existing_transactions:
+                logger.info(f"Existing transaction: ID {transaction.transaction_id}, State {transaction.state}, Account ID {transaction.account_id}")
+
+            # Cancel any existing Payme transactions for this subscription ID
+            pending_transactions = PaymeTransactions.objects.filter(
+                account__id=subscription.id,
+                state=2  # Target state 2 (in progress) based on query result
+            )
+            for transaction in pending_transactions:
                 try:
                     transaction.cancel(reason="Initiating new payment")
-                    logger.info(f"Cancelled existing Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
+                    logger.info(f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
+                    # Verify cancellation by checking updated state
+                    transaction.refresh_from_db()
+                    logger.info(f"Updated transaction state after cancellation: {transaction.state}")
                 except Exception as e:
                     logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {str(e)}")
 
