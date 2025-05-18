@@ -56,6 +56,13 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     data=str(expected_amount)
                 ).as_resp()
 
+            # Check for existing transactions and allow if previous is paid or cancelled
+            existing = PaymeTransactions.objects.filter(account__id=account_id, state__in=[2, -1]).exists()
+            if existing:
+                logger.info(
+                    f"Existing paid or cancelled transaction found for account ID {account_id}, allowing new transaction")
+                return response.CheckPerformTransaction(allow=True).as_resp()
+
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction ID: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
@@ -191,50 +198,115 @@ class UnifiedPaymentInitView(APIView):
                 logger.info(
                     f"Existing transaction: ID {transaction.transaction_id}, State {transaction.state}, Account ID {transaction.account_id}")
 
-            # Cancel any existing Payme transactions for this subscription ID
+            # Check and cancel any existing Payme transactions for this subscription ID
             pending_transactions = PaymeTransactions.objects.filter(
                 account__id=subscription.id,
                 state=2  # In progress state
             )
             for transaction in pending_transactions:
                 try:
+                    # Validate PAYME_KEY
+                    if not settings.PAYME_KEY:
+                        raise ValueError("PAYME_KEY is not set in environment variables")
+
                     # Prepare Basic Auth header
                     auth_str = f"Paycom:{settings.PAYME_KEY}"
                     auth_header = "Basic " + base64.b64encode(auth_str.encode()).decode()
 
-                    # Prepare payload for CancelTransaction
-                    payload = {
-                        "id": f"cancel_{transaction.transaction_id}_{int(timezone.now().timestamp())}",
-                        # Unique request ID
-                        "method": "CancelTransaction",
+                    # Check transaction state
+                    check_payload = {
+                        "id": f"check_{transaction.transaction_id}_{int(timezone.now().timestamp())}",
+                        "method": "CheckTransaction",
                         "params": {
                             "id": transaction.transaction_id
                         }
                     }
 
-                    # Make the API call
-                    response = requests.post(
+                    logger.info(
+                        f"Sending CheckTransaction request for transaction {transaction.transaction_id}: {json.dumps(check_payload)}")
+
+                    check_response = requests.post(
                         "https://checkout.paycom.uz/api",
                         headers={
                             "X-Auth": auth_header,
                             "Content-Type": "application/json"
                         },
-                        json=payload
+                        json=check_payload,
+                        timeout=10
                     )
-                    response_data = response.json()
 
-                    if response.status_code == 200 and 'result' in response_data:
+                    logger.info(f"CheckTransaction response status: {check_response.status_code}")
+                    logger.info(f"CheckTransaction response body: {check_response.text}")
+
+                    check_response_data = check_response.json()
+
+                    if check_response.status_code != 200 or 'result' not in check_response_data:
+                        logger.error(f"Failed to check transaction {transaction.transaction_id}: {check_response_data}")
+                        raise Exception(f"CheckTransaction failed: {check_response_data}")
+
+                    transaction_state = check_response_data['result'].get('state')
+                    logger.info(f"Transaction {transaction.transaction_id} state on Payme: {transaction_state}")
+
+                    if transaction_state in [-1, -2]:
                         logger.info(
-                            f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
-                        # Update local state to reflect cancellation
+                            f"Transaction {transaction.transaction_id} is already cancelled or failed (state {transaction_state})")
                         transaction.state = -1
                         transaction.save()
                         transaction.refresh_from_db()
-                        logger.info(f"Confirmed transaction state after cancellation: {transaction.state}")
+                        continue
+                    elif transaction_state == 2:
+                        logger.info(
+                            f"Transaction {transaction.transaction_id} is paid (state {transaction_state}), cannot cancel via API")
+                        transaction.state = 2
+                        transaction.save()
+                        transaction.refresh_from_db()
+                        continue
+
+                    # Attempt cancellation if state is 1 (created)
+                    if transaction_state == 1:
+                        cancel_payload = {
+                            "id": f"cancel_{transaction.transaction_id}_{int(timezone.now().timestamp())}",
+                            "method": "CancelTransaction",
+                            "params": {
+                                "id": transaction.transaction_id
+                            }
+                        }
+
+                        logger.info(
+                            f"Sending CancelTransaction request for transaction {transaction.transaction_id}: {json.dumps(cancel_payload)}")
+
+                        cancel_response = requests.post(
+                            "https://checkout.paycom.uz/api",
+                            headers={
+                                "X-Auth": auth_header,
+                                "Content-Type": "application/json"
+                            },
+                            json=cancel_payload,
+                            timeout=10
+                        )
+
+                        logger.info(f"CancelTransaction response status: {cancel_response.status_code}")
+                        logger.info(f"CancelTransaction response body: {cancel_response.text}")
+
+                        cancel_response_data = cancel_response.json()
+
+                        if cancel_response.status_code == 200 and 'result' in cancel_response_data:
+                            logger.info(
+                                f"Successfully cancelled Payme transaction {transaction.transaction_id} for subscription ID: {subscription.id}")
+                            transaction.state = -1
+                            transaction.save()
+                            transaction.refresh_from_db()
+                            logger.info(f"Confirmed transaction state after cancellation: {transaction.state}")
+                        else:
+                            logger.error(
+                                f"Failed to cancel transaction {transaction.transaction_id}: {cancel_response_data}")
+                            raise Exception(f"CancelTransaction failed: {cancel_response_data}")
                     else:
-                        logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {response_data}")
+                        logger.error(
+                            f"Transaction {transaction.transaction_id} state {transaction_state} is not cancellable")
+                        raise Exception(f"Unexpected transaction state: {transaction_state}")
                 except Exception as e:
-                    logger.error(f"Failed to cancel transaction {transaction.transaction_id}: {str(e)}")
+                    logger.error(f"Failed to process transaction {transaction.transaction_id}: {str(e)}")
 
             payme_url = generate_payme_docs_style_url(
                 subscription_type=subscription_type,
