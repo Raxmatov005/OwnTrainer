@@ -62,17 +62,22 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 ).as_resp()
 
             if transaction_id:
-                existing_transaction = PaymeTransactions.objects.filter(
-                    transaction_id=transaction_id
-                ).exists()
+                # Check if the transaction exists and its state
+                existing_transaction = PaymeTransactions.objects.filter(transaction_id=transaction_id).first()
                 if existing_transaction:
-                    logger.warning(f"Transaction ID {transaction_id} already exists for account ID {account_id}")
-                    return response.CheckPerformTransaction(
-                        allow=False,
-                        reason=-31099,
-                        message="Transaction ID already exists",
-                        data="transaction[id]"
-                    ).as_resp()
+                    logger.warning(f"Transaction ID {transaction_id} already exists, checking state")
+                    # Allow if the transaction is in a pending state (e.g., state 1) or retry
+                    if existing_transaction.state in [1]:  # State 1 = pending
+                        logger.info(f"Allowing retry for pending transaction {transaction_id}")
+                        return response.CheckPerformTransaction(allow=True).as_resp()
+                    else:
+                        logger.warning(f"Transaction {transaction_id} already processed, blocking")
+                        return response.CheckPerformTransaction(
+                            allow=False,
+                            reason=-31099,
+                            message="Transaction already processed",
+                            data="transaction[id]"
+                        ).as_resp()
 
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction ID: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
@@ -88,6 +93,36 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.error(f"Error in check_perform_transaction: {str(e)} with params: {params}")
             return response.CheckPerformTransaction(
                 allow=False,
+            ).as_resp()
+
+    def create_transaction(self, params):
+        logger.info(f"Payme create_transaction full params: {params}")
+        transaction_id = params.get('id')
+        account_id = params.get('account', {}).get('id')
+        amount = params.get('amount')
+        create_time = params.get('time', timezone.now().timestamp() * 1000)  # Convert to milliseconds
+
+        try:
+            transaction, created = PaymeTransactions.objects.update_or_create(
+                transaction_id=transaction_id,
+                defaults={
+                    'account_id': account_id,
+                    'amount': amount,
+                    'state': 1,  # Pending state
+                    'create_time': create_time,
+                }
+            )
+            logger.info(f"Transaction {transaction_id} created/updated with state 1")
+            return response.CreateTransaction(
+                state=1,
+                transaction=transaction_id,
+                create_time=create_time
+            ).as_resp()
+        except Exception as e:
+            logger.error(f"Error in create_transaction: {str(e)} with params: {params}")
+            return response.CreateTransaction(
+                state=0,
+                error={"code": -31008, "message": "Internal server error"}
             ).as_resp()
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
