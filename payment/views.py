@@ -96,6 +96,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         account_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=int(account_id))
+            # Deactivate other active subscriptions for the same user
             UserSubscription.objects.filter(
                 user=subscription.user,
                 is_active=True
@@ -103,14 +104,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
             if subscription.is_active and subscription.end_date:
-                subscription.end_date = subscription.end_date + timedelta(days=add_days)
+                # Extend the existing end_date
+                new_end_date = subscription.end_date + timedelta(days=add_days)
+                subscription.end_date = new_end_date
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['end_date', 'pending_extension_type'])
                 logger.info(
-                    f"✅ Extended active subscription ID: {account_id}, "
-                    f"new end_date: {subscription.end_date}"
+                    f"✅ Extended subscription ID: {account_id}, new end_date: {new_end_date}"
                 )
             else:
+                # Activate or set new subscription period
                 subscription.extend_subscription(add_days)
                 subscription.is_active = True
                 subscription.pending_extension_type = None
@@ -190,24 +193,9 @@ class UnifiedPaymentInitView(APIView):
                 )
                 logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
             else:
-                # Force a new subscription if ac.id=72 to bypass Payme block
-                if str(subscription.id) == "72":
-                    logger.info(
-                        f"Forcing new subscription for user {user.email_or_phone} to bypass Payme block on ac.id=72")
-                    subscription = UserSubscription.objects.create(
-                        user=user,
-                        subscription_type=subscription_type,
-                        amount_in_soum=amount,
-                        is_active=False,
-                        start_date=timezone.now().date(),
-                        end_date=None,
-                        pending_extension_type=subscription_type
-                    )
-                    logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
-                else:
-                    subscription.amount_in_soum = amount
-                    subscription.pending_extension_type = subscription_type
-                    subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
+                subscription.amount_in_soum = amount
+                subscription.pending_extension_type = subscription_type
+                subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
         else:
             subscription = UserSubscription.objects.create(
                 user=user,
