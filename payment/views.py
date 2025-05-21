@@ -17,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def dispatch_method(self, method, params):
+        # For CreateTransaction, ensure CheckPerformTransaction passes first
         if method == "CreateTransaction":
+            check_result = self.check_perform_transaction(params)
+            if "error" in check_result:
+                logger.info(f"CheckPerformTransaction failed for CreateTransaction: {check_result}")
+                return check_result
             return self.create_transaction(params)
         return super().dispatch_method(method, params)
 
@@ -40,9 +45,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            if not transaction_id:
-                logger.warning(f"Missing transaction ID in params: {params}, allowing request to proceed for follow-up")
-
             if not account_id.isdigit():
                 logger.error(f"Invalid account ID format: {account_id}")
                 return {
@@ -55,7 +57,20 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            subscription = UserSubscription.objects.get(id=int(account_id))
+            try:
+                subscription = UserSubscription.objects.get(id=int(account_id))
+            except UserSubscription.DoesNotExist:
+                logger.error(f"Invalid subscription ID: {account_id}")
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -31050,
+                        "message": "Invalid subscription ID",
+                        "data": "account[id]"
+                    },
+                    "id": params.get('id', 0)
+                }
+
             expected_amount = subscription.amount_in_soum * 100
             logger.info(f"Subscription amount_in_soum: {subscription.amount_in_soum}, Expected tiyins: {expected_amount}")
 
@@ -71,14 +86,13 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            if transaction_id:
-                existing_transaction = PaymeTransactions.objects.filter(transaction_id=transaction_id).first()
-                if existing_transaction:
-                    if existing_transaction.state == 1 or existing_transaction.account_id == account_id:
-                        logger.info(f"Allowing retry or consistent transaction {transaction_id}")
-                        return response.CheckPerformTransaction(allow=True).as_resp()
-                    else:
-                        logger.warning(f"Transaction {transaction_id} already processed for different account, blocking")
+            # Check for existing transactions with the same account_id and amount
+            existing_transactions = PaymeTransactions.objects.filter(account_id=account_id, amount=amount)
+            if existing_transactions.exists():
+                if transaction_id:
+                    existing_transaction = existing_transactions.filter(transaction_id=transaction_id).first()
+                    if not existing_transaction and any(t.state == 1 for t in existing_transactions):
+                        logger.warning(f"Transaction already processed for account {account_id}, blocking")
                         return {
                             "jsonrpc": "2.0",
                             "error": {
@@ -88,20 +102,20 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                             },
                             "id": params.get('id', 0)
                         }
+                else:
+                    logger.warning(f"Missing transaction ID, but existing transactions found for account {account_id}")
+                    return {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -31099,
+                            "message": "Transaction already processed for different account",
+                            "data": "transaction[id]"
+                        },
+                        "id": params.get('id', 0)
+                    }
 
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction_id: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
-        except UserSubscription.DoesNotExist:
-            logger.error(f"Invalid subscription ID: {account_id}")
-            return {
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -31050,
-                    "message": "Invalid subscription ID",
-                    "data": "account[id]"
-                },
-                "id": params.get('id', 0)
-            }
         except Exception as e:
             logger.error(f"Unexpected error in check_perform_transaction: {str(e)} with params: {params}")
             return {
@@ -122,13 +136,27 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         time = params.get('time')
 
         try:
+            # Double-check account_id validity to prevent foreign key errors
+            try:
+                UserSubscription.objects.get(id=int(account_id))
+            except UserSubscription.DoesNotExist:
+                logger.error(f"Invalid subscription ID in create_transaction: {account_id}")
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -31050,
+                        "message": "Invalid subscription ID",
+                        "data": "account[id]"
+                    },
+                    "id": params.get('id', 0)
+                }
+
             transaction, created = PaymeTransactions.objects.update_or_create(
                 transaction_id=transaction_id,
                 defaults={
                     'account_id': account_id,
                     'amount': amount,
                     'state': 1,
-                    # Assuming the model has a 'created_at' field for timestamps
                     'created_at': timezone.datetime.fromtimestamp(time / 1000)
                 }
             )
