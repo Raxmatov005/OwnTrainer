@@ -15,7 +15,7 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
     cost_in_soum = SUBSCRIPTION_COSTS[subscription_type]
     callback_timeout = 600000
     subscription = UserSubscription.objects.get(id=user_program_id)
-    cost_in_soum = subscription.amount_in_soum
+    cost_in_soum = subscription.amount_in_soum  # Use the database value
     cost_in_tiyin = cost_in_soum * 100  # Convert to tiyins
     return_url = "https://owntrainer.uz/payment-success"
 
@@ -29,8 +29,9 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
         f"c={return_url}"
     )
 
-    # Log the raw params for debugging
+    # Log the raw params and cost_in_tiyin for debugging
     logger.info(f"Generated raw Payme params: {raw_params}")
+    logger.info(f"Calculated cost_in_tiyin: {cost_in_tiyin}, from cost_in_soum: {cost_in_soum}")
 
     # Base64-encode the string
     encoded_params = base64.b64encode(raw_params.encode()).decode()
