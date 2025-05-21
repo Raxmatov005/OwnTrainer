@@ -85,33 +85,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            existing_transactions = PaymeTransactions.objects.filter(account_id=account_id, amount=amount)
-            if existing_transactions.exists():
-                if transaction_id:
-                    existing_transaction = existing_transactions.filter(transaction_id=transaction_id).first()
-                    if not existing_transaction and any(t.state == 1 for t in existing_transactions):
-                        logger.warning(f"Transaction already processed for account {account_id}, blocking")
-                        return {
-                            "jsonrpc": "2.0",
-                            "error": {
-                                "code": -31099,
-                                "message": "Transaction already processed for different account",
-                                "data": "transaction[id]"
-                            },
-                            "id": params.get('id', 0)
-                        }
-                else:
-                    logger.warning(f"Missing transaction ID, but existing transactions found for account {account_id}")
-                    return {
-                        "jsonrpc": "2.0",
-                        "error": {
-                            "code": -31099,
-                            "message": "Transaction already processed for different account",
-                            "data": "transaction[id]"
-                        },
-                        "id": params.get('id', 0)
-                    }
-
+            # Removed the existing transactions check to allow multiple transactions with different transaction_ids
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction_id: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except Exception as e:
@@ -304,7 +278,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount # Ensure conversion to tiyins for Click
+            amount_in_tiyins = amount * 100  # Ensure conversion to tiyins for Click
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
