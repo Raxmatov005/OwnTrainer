@@ -129,7 +129,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     'amount': amount,
                     'state': 1,
                     # Assuming the model has a 'created_at' field for timestamps
-                    'created_at': timezone.datetime.fromtimestamp(time / 1000, tz=timezone.utc)
+                    'created_at': timezone.datetime.fromtimestamp(time / 1000)
                 }
             )
             logger.info(f"Transaction {transaction_id} created/updated with state 1")
