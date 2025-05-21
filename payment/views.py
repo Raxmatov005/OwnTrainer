@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def dispatch_method(self, method, params):
-        # For CreateTransaction, ensure CheckPerformTransaction passes first
         if method == "CreateTransaction":
             check_result = self.check_perform_transaction(params)
             if "error" in check_result:
@@ -86,7 +85,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            # Check for existing transactions with the same account_id and amount
             existing_transactions = PaymeTransactions.objects.filter(account_id=account_id, amount=amount)
             if existing_transactions.exists():
                 if transaction_id:
@@ -136,7 +134,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         time = params.get('time')
 
         try:
-            # Double-check account_id validity to prevent foreign key errors
             try:
                 UserSubscription.objects.get(id=int(account_id))
             except UserSubscription.DoesNotExist:
@@ -185,7 +182,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             account_id = transaction.account.id
             subscription = UserSubscription.objects.get(id=int(account_id))
 
-            # Deactivate other active subscriptions for the user
             UserSubscription.objects.filter(
                 user=subscription.user,
                 is_active=True
@@ -244,7 +240,7 @@ class UnifiedPaymentInitView(APIView):
 
         amount = SUBSCRIPTION_COSTS[subscription_type]
         logger.info(
-            f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm")
+            f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm, expected tiyins: {amount * 100}")
 
         subscription = UserSubscription.objects.filter(
             user=user,
@@ -260,7 +256,7 @@ class UnifiedPaymentInitView(APIView):
 
         if subscription:
             logger.info(
-                f"Found subscription ID: {subscription.id} for user {user.email_or_phone}, is_active: {subscription.is_active}")
+                f"Found subscription ID: {subscription.id} for user {user.email_or_phone}, is_active: {subscription.is_active}, current amount_in_soum: {subscription.amount_in_soum}")
             if subscription.end_date and subscription.end_date < timezone.now().date() and not subscription.is_active:
                 logger.info(f"Subscription ID {subscription.id} is expired, creating a new one")
                 subscription = UserSubscription.objects.create(
@@ -272,11 +268,12 @@ class UnifiedPaymentInitView(APIView):
                     end_date=None,
                     pending_extension_type=subscription_type
                 )
-                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
+                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}, amount_in_soum: {amount}")
             else:
                 subscription.amount_in_soum = amount
                 subscription.pending_extension_type = subscription_type
                 subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
+                logger.info(f"Updated subscription ID: {subscription.id}, new amount_in_soum: {amount}")
         else:
             subscription = UserSubscription.objects.create(
                 user=user,
@@ -287,7 +284,7 @@ class UnifiedPaymentInitView(APIView):
                 end_date=None,
                 pending_extension_type=subscription_type
             )
-            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}")
+            logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}, amount_in_soum: {amount}")
 
         if payment_method == "payme":
             existing_transactions = PaymeTransactions.objects.filter(account__id=subscription.id)
@@ -307,13 +304,13 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount
+            amount_in_tiyins = amount # Ensure conversion to tiyins for Click
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
                 return_url=return_url
             )
-            logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}")
+            logger.info(f"Click redirect URL: {pay_url}, Request data: {request.data}, amount in tiyins: {amount_in_tiyins}")
             return Response({"redirect_url": pay_url})
 
         return Response({"error": "Unhandled payment method"}, status=500)
