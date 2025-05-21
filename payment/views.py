@@ -15,8 +15,6 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-
-
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
     def dispatch_method(self, method, params):
         if method == "CreateTransaction":
@@ -28,79 +26,100 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         try:
             transaction_id = params.get('id')
             account_id = params.get('account', {}).get('id')
+            amount = int(params.get('amount'))
 
             if not account_id:
                 logger.error(f"Missing account ID in params: {params}")
-                return response.CheckPerformTransaction(
-                    allow=False,
-                    reason=-31050,
-                    message="Missing account ID",
-                    data="account[id]"
-                ).as_resp()
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -31050,
+                        "message": "Missing account ID",
+                        "data": "account[id]"
+                    },
+                    "id": params.get('id', 0)
+                }
 
             if not transaction_id:
                 logger.warning(f"Missing transaction ID in params: {params}, allowing request to proceed for follow-up")
 
             if not account_id.isdigit():
                 logger.error(f"Invalid account ID format: {account_id}")
-                return response.CheckPerformTransaction(
-                    allow=False,
-                    reason=-31050,
-                    message="Invalid account ID format",
-                    data="account[id]"
-                ).as_resp()
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -31050,
+                        "message": "Invalid account ID format",
+                        "data": "account[id]"
+                    },
+                    "id": params.get('id', 0)
+                }
 
             subscription = UserSubscription.objects.get(id=int(account_id))
-            amount = int(params.get('amount'))
             expected_amount = subscription.amount_in_soum * 100
             logger.info(f"Subscription amount_in_soum: {subscription.amount_in_soum}, Expected tiyins: {expected_amount}")
 
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
-                return response.CheckPerformTransaction(
-                    allow=False,
-                    reason=-31001,
-                    message="Amount mismatch",
-                    data=str(expected_amount)
-                ).as_resp()
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -31001,
+                        "message": "Incorrect amount",
+                        "data": str(expected_amount)
+                    },
+                    "id": params.get('id', 0)
+                }
 
             if transaction_id:
                 existing_transaction = PaymeTransactions.objects.filter(transaction_id=transaction_id).first()
                 if existing_transaction:
-                    if existing_transaction.state in [1] or existing_transaction.account_id == account_id:
+                    if existing_transaction.state == 1 or existing_transaction.account_id == account_id:
                         logger.info(f"Allowing retry or consistent transaction {transaction_id}")
                         return response.CheckPerformTransaction(allow=True).as_resp()
                     else:
                         logger.warning(f"Transaction {transaction_id} already processed for different account, blocking")
-                        return response.CheckPerformTransaction(
-                            allow=False,
-                            reason=-31099,
-                            message="Transaction already processed for different account",
-                            data="transaction[id]"
-                        ).as_resp()
+                        return {
+                            "jsonrpc": "2.0",
+                            "error": {
+                                "code": -31099,
+                                "message": "Transaction already processed for different account",
+                                "data": "transaction[id]"
+                            },
+                            "id": params.get('id', 0)
+                        }
 
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction_id: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
             logger.error(f"Invalid subscription ID: {account_id}")
-            return response.CheckPerformTransaction(
-                allow=False,
-                reason=-31050,
-                message="Invalid subscription ID",
-                data="account[id]"
-            ).as_resp()
+            return {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -31050,
+                    "message": "Invalid subscription ID",
+                    "data": "account[id]"
+                },
+                "id": params.get('id', 0)
+            }
         except Exception as e:
-            logger.error(f"Error in check_perform_transaction: {str(e)} with params: {params}")
-            return response.CheckPerformTransaction(
-                allow=False,
-            ).as_resp()
+            logger.error(f"Unexpected error in check_perform_transaction: {str(e)} with params: {params}")
+            return {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -31000,
+                    "message": "Internal server error",
+                    "data": "Check server logs"
+                },
+                "id": params.get('id', 0)
+            }
 
     def create_transaction(self, params):
         logger.info(f"Payme create_transaction full params: {params}")
         transaction_id = params.get('id')
         account_id = params.get('account', {}).get('id')
         amount = params.get('amount')
-        create_time = params.get('time', timezone.now().timestamp() * 1000)
+        time = params.get('time')
 
         try:
             transaction, created = PaymeTransactions.objects.update_or_create(
@@ -109,14 +128,15 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     'account_id': account_id,
                     'amount': amount,
                     'state': 1,
-                    'create_time': create_time,
+                    # Assuming the model has a 'created_at' field for timestamps
+                    'created_at': timezone.datetime.fromtimestamp(time / 1000, tz=timezone.utc)
                 }
             )
             logger.info(f"Transaction {transaction_id} created/updated with state 1")
             return response.CreateTransaction(
                 state=1,
                 transaction=transaction_id,
-                create_time=create_time
+                create_time=time
             ).as_resp()
         except Exception as e:
             logger.error(f"Error in create_transaction: {str(e)} with params: {params}")
@@ -124,17 +144,20 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 "jsonrpc": "2.0",
                 "error": {
                     "code": -31008,
-                    "message": "Internal server error"
+                    "message": "Internal server error",
+                    "data": str(e)
                 },
                 "id": params.get('id', 0)
             }
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_successfully_payment full params: {params}")
-        transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        account_id = transaction.account.id
         try:
+            transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
+            account_id = transaction.account.id
             subscription = UserSubscription.objects.get(id=int(account_id))
+
+            # Deactivate other active subscriptions for the user
             UserSubscription.objects.filter(
                 user=subscription.user,
                 is_active=True
@@ -160,9 +183,9 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
     def handle_cancelled_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_cancelled_payment full params: {params}")
-        transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-        account_id = transaction.account.id
         try:
+            transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
+            account_id = transaction.account.id
             subscription = UserSubscription.objects.get(id=int(account_id))
             subscription.is_active = False
             subscription.pending_extension_type = None
@@ -172,7 +195,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             logger.error(f"❌ No subscription found with ID: {account_id}")
         except Exception as e:
             logger.error(f"Error in handle_cancelled_payment: {str(e)}")
-
 
 class UnifiedPaymentInitView(APIView):
     permission_classes = [AllowAny]
