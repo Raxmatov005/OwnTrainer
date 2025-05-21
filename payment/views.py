@@ -79,7 +79,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                             data="transaction[id]"
                         ).as_resp()
 
-            logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction ID: {transaction_id}")
+            logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction_id: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except UserSubscription.DoesNotExist:
             logger.error(f"Invalid subscription ID: {account_id}")
@@ -118,18 +118,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 transaction=transaction_id,
                 create_time=create_time
             ).as_resp()
-        except PaymeTransactions.DoesNotExist:
-            logger.error(f"Invalid transaction model access for {transaction_id}")
-            return response.CreateTransaction(
-                state=0,
-                error={"code": -31008, "message": "Invalid transaction model"}
-            ).as_resp()
         except Exception as e:
             logger.error(f"Error in create_transaction: {str(e)} with params: {params}")
-            return response.CreateTransaction(
-                state=0,
-                error={"code": -31008, "message": "Internal server error"}
-            ).as_resp()
+            return {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -31008,
+                    "message": "Internal server error"
+                },
+                "id": params.get('id', 0)
+            }
 
     def handle_successfully_payment(self, params, result, *args, **kwargs):
         logger.info(f"Payme handle_successfully_payment full params: {params}")
