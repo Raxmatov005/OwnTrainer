@@ -16,7 +16,13 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+
 class PaymeCallBackAPIView(PaymeWebHookAPIView):
+    def dispatch_method(self, method, params):
+        if method == "CreateTransaction":
+            return self.create_transaction(params)
+        return super().dispatch_method(method, params)
+
     def check_perform_transaction(self, params):
         logger.info(f"Payme check_perform_transaction full params: {params}")
         try:
@@ -34,7 +40,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             if not transaction_id:
                 logger.warning(f"Missing transaction ID in params: {params}, allowing request to proceed for follow-up")
-                # Proceed without transaction_id, expecting Payme to send it later
 
             if not account_id.isdigit():
                 logger.error(f"Invalid account ID format: {account_id}")
@@ -48,10 +53,8 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
             subscription = UserSubscription.objects.get(id=int(account_id))
             amount = int(params.get('amount'))
             expected_amount = subscription.amount_in_soum * 100
+            logger.info(f"Subscription amount_in_soum: {subscription.amount_in_soum}, Expected tiyins: {expected_amount}")
 
-            logger.info(
-                f"Checking amount: Payme sent {amount} tiyins, expected {expected_amount} tiyins for subscription_type {subscription.subscription_type}, subscription ID: {account_id}"
-            )
             if amount != expected_amount:
                 logger.warning(f"Amount mismatch: expected {expected_amount} tiyins, got {amount} tiyins")
                 return response.CheckPerformTransaction(
@@ -62,20 +65,17 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 ).as_resp()
 
             if transaction_id:
-                # Check if the transaction exists and its state
                 existing_transaction = PaymeTransactions.objects.filter(transaction_id=transaction_id).first()
                 if existing_transaction:
-                    logger.warning(f"Transaction ID {transaction_id} already exists, checking state")
-                    # Allow if the transaction is in a pending state (e.g., state 1) or retry
-                    if existing_transaction.state in [1]:  # State 1 = pending
-                        logger.info(f"Allowing retry for pending transaction {transaction_id}")
+                    if existing_transaction.state in [1] or existing_transaction.account_id == account_id:
+                        logger.info(f"Allowing retry or consistent transaction {transaction_id}")
                         return response.CheckPerformTransaction(allow=True).as_resp()
                     else:
-                        logger.warning(f"Transaction {transaction_id} already processed, blocking")
+                        logger.warning(f"Transaction {transaction_id} already processed for different account, blocking")
                         return response.CheckPerformTransaction(
                             allow=False,
                             reason=-31099,
-                            message="Transaction already processed",
+                            message="Transaction already processed for different account",
                             data="transaction[id]"
                         ).as_resp()
 
@@ -100,7 +100,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         transaction_id = params.get('id')
         account_id = params.get('account', {}).get('id')
         amount = params.get('amount')
-        create_time = params.get('time', timezone.now().timestamp() * 1000)  # Convert to milliseconds
+        create_time = params.get('time', timezone.now().timestamp() * 1000)
 
         try:
             transaction, created = PaymeTransactions.objects.update_or_create(
@@ -108,7 +108,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 defaults={
                     'account_id': account_id,
                     'amount': amount,
-                    'state': 1,  # Pending state
+                    'state': 1,
                     'create_time': create_time,
                 }
             )
@@ -117,6 +117,12 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 state=1,
                 transaction=transaction_id,
                 create_time=create_time
+            ).as_resp()
+        except PaymeTransactions.DoesNotExist:
+            logger.error(f"Invalid transaction model access for {transaction_id}")
+            return response.CreateTransaction(
+                state=0,
+                error={"code": -31008, "message": "Invalid transaction model"}
             ).as_resp()
         except Exception as e:
             logger.error(f"Error in create_transaction: {str(e)} with params: {params}")
@@ -131,7 +137,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         account_id = transaction.account.id
         try:
             subscription = UserSubscription.objects.get(id=int(account_id))
-            # Deactivate other active subscriptions for the same user
             UserSubscription.objects.filter(
                 user=subscription.user,
                 is_active=True
@@ -139,24 +144,17 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
 
             add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
             if subscription.is_active and subscription.end_date:
-                # Extend the existing end_date
                 new_end_date = subscription.end_date + timedelta(days=add_days)
                 subscription.end_date = new_end_date
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['end_date', 'pending_extension_type'])
-                logger.info(
-                    f"✅ Extended subscription ID: {account_id}, new end_date: {new_end_date}"
-                )
+                logger.info(f"✅ Extended subscription ID: {account_id}, new end_date: {new_end_date}")
             else:
-                # Activate or set new subscription period
                 subscription.extend_subscription(add_days)
                 subscription.is_active = True
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['start_date', 'end_date', 'is_active', 'pending_extension_type'])
-                logger.info(
-                    f"✅ Activated subscription ID: {account_id}, "
-                    f"is_active: {subscription.is_active}, end_date: {subscription.end_date}"
-                )
+                logger.info(f"✅ Activated subscription ID: {account_id}, is_active: {subscription.is_active}, end_date: {subscription.end_date}")
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {account_id}")
         except Exception as e:

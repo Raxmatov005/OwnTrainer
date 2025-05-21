@@ -1,6 +1,7 @@
 import base64
 from django.conf import settings
 from click_app.views import SUBSCRIPTION_COSTS
+from users_app.models import UserSubscription
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,8 @@ def generate_payme_docs_style_url(subscription_type: str, user_program_id: int) 
     payme_id = settings.PAYME_ID
     cost_in_soum = SUBSCRIPTION_COSTS[subscription_type]
     callback_timeout = 600000
+    subscription = UserSubscription.objects.get(id=user_program_id)
+    cost_in_soum = subscription.amount_in_soum
     cost_in_tiyin = cost_in_soum * 100  # Convert to tiyins
     return_url = "https://owntrainer.uz/payment-success"
 
