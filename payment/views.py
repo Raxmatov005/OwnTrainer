@@ -85,7 +85,6 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                     "id": params.get('id', 0)
                 }
 
-            # Removed the existing transactions check to allow multiple transactions with different transaction_ids
             logger.info(f"Transaction allowed for subscription ID: {account_id}, transaction_id: {transaction_id}")
             return response.CheckPerformTransaction(allow=True).as_resp()
         except Exception as e:
@@ -153,14 +152,23 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         logger.info(f"Payme handle_successfully_payment full params: {params}")
         try:
             transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-            account_id = transaction.account.id
-            subscription = UserSubscription.objects.get(id=int(account_id))
+            account_id = transaction.account_id
+            user = UserSubscription.objects.get(id=int(account_id)).user
 
+            # Get the most recent subscription for the user (active or inactive)
+            subscription = UserSubscription.objects.filter(user=user).order_by('-id').first()
+
+            if not subscription:
+                logger.error(f"No subscription found for user with account_id: {account_id}")
+                return
+
+            # Deactivate other active subscriptions for the user
             UserSubscription.objects.filter(
-                user=subscription.user,
+                user=user,
                 is_active=True
             ).exclude(id=subscription.id).update(is_active=False, end_date=None)
 
+            # Extend the existing subscription
             add_days = SUBSCRIPTION_DAYS.get(subscription.pending_extension_type or subscription.subscription_type, 30)
             if subscription.is_active and subscription.end_date:
                 new_end_date = subscription.end_date + timedelta(days=add_days)
@@ -169,11 +177,16 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
                 subscription.save(update_fields=['end_date', 'pending_extension_type'])
                 logger.info(f"✅ Extended subscription ID: {account_id}, new end_date: {new_end_date}")
             else:
-                subscription.extend_subscription(add_days)
+                subscription.start_date = timezone.now().date()
+                subscription.end_date = subscription.start_date + timedelta(days=add_days)
                 subscription.is_active = True
                 subscription.pending_extension_type = None
                 subscription.save(update_fields=['start_date', 'end_date', 'is_active', 'pending_extension_type'])
                 logger.info(f"✅ Activated subscription ID: {account_id}, is_active: {subscription.is_active}, end_date: {subscription.end_date}")
+
+            # Update user's premium status
+            subscription.user.is_premium = subscription.is_active
+            subscription.user.save()
         except UserSubscription.DoesNotExist:
             logger.error(f"❌ No subscription found with ID: {account_id}")
         except Exception as e:
@@ -183,7 +196,7 @@ class PaymeCallBackAPIView(PaymeWebHookAPIView):
         logger.info(f"Payme handle_cancelled_payment full params: {params}")
         try:
             transaction = PaymeTransactions.get_by_transaction_id(transaction_id=params["id"])
-            account_id = transaction.account.id
+            account_id = transaction.account_id
             subscription = UserSubscription.objects.get(id=int(account_id))
             subscription.is_active = False
             subscription.pending_extension_type = None
@@ -216,39 +229,11 @@ class UnifiedPaymentInitView(APIView):
         logger.info(
             f"Processing subscription for user {user.email_or_phone} with type {subscription_type}, amount {amount} so'm, expected tiyins: {amount * 100}")
 
-        subscription = UserSubscription.objects.filter(
-            user=user,
-            is_active=True
-        ).order_by('-end_date', '-id').first()
+        # Get the most recent subscription for the user (active or inactive)
+        subscription = UserSubscription.objects.filter(user=user).order_by('-id').first()
 
         if not subscription:
-            subscription = UserSubscription.objects.filter(
-                user=user,
-                subscription_type=subscription_type,
-                is_active=False
-            ).order_by('-end_date', '-id').first()
-
-        if subscription:
-            logger.info(
-                f"Found subscription ID: {subscription.id} for user {user.email_or_phone}, is_active: {subscription.is_active}, current amount_in_soum: {subscription.amount_in_soum}")
-            if subscription.end_date and subscription.end_date < timezone.now().date() and not subscription.is_active:
-                logger.info(f"Subscription ID {subscription.id} is expired, creating a new one")
-                subscription = UserSubscription.objects.create(
-                    user=user,
-                    subscription_type=subscription_type,
-                    amount_in_soum=amount,
-                    is_active=False,
-                    start_date=timezone.now().date(),
-                    end_date=None,
-                    pending_extension_type=subscription_type
-                )
-                logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}, amount_in_soum: {amount}")
-            else:
-                subscription.amount_in_soum = amount
-                subscription.pending_extension_type = subscription_type
-                subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
-                logger.info(f"Updated subscription ID: {subscription.id}, new amount_in_soum: {amount}")
-        else:
+            # Create a new subscription only if no records exist
             subscription = UserSubscription.objects.create(
                 user=user,
                 subscription_type=subscription_type,
@@ -259,6 +244,14 @@ class UnifiedPaymentInitView(APIView):
                 pending_extension_type=subscription_type
             )
             logger.info(f"Created new subscription ID: {subscription.id} for user {user.email_or_phone}, amount_in_soum: {amount}")
+        else:
+            # Reuse existing subscription and update it
+            logger.info(
+                f"Found subscription ID: {subscription.id} for user {user.email_or_phone}, is_active: {subscription.is_active}, current amount_in_soum: {subscription.amount_in_soum}")
+            subscription.amount_in_soum = amount
+            subscription.pending_extension_type = subscription_type
+            subscription.save(update_fields=['amount_in_soum', 'pending_extension_type'])
+            logger.info(f"Updated subscription ID: {subscription.id}, new amount_in_soum: {amount}")
 
         if payment_method == "payme":
             existing_transactions = PaymeTransactions.objects.filter(account__id=subscription.id)
@@ -278,7 +271,7 @@ class UnifiedPaymentInitView(APIView):
 
         elif payment_method == "click":
             return_url = "https://owntrainer.uz/payment-success"
-            amount_in_tiyins = amount * 100  # Ensure conversion to tiyins for Click
+            amount_in_tiyins = amount  # Ensure conversion to tiyins for Click
             pay_url = PyClick.generate_url(
                 order_id=str(subscription.id),
                 amount=str(amount_in_tiyins),
